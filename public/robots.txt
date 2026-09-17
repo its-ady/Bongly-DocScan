@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /.next/
+
+Sitemap: https://docscan.bongly.app/sitemap.xml
+
+# Slow down aggressive crawlers
+User-agent: MJ12bot
+Crawl-delay: 10
