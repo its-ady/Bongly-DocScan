@@ -1,15 +1,17 @@
-const CACHE = 'bongly-docscan-v3'
-const APP_SHELL = [
-  '/',
-  '/manifest.webmanifest',
-  '/logo.png',
-  '/icon-192.png',
-  '/icon-512.png',
-]
+const CACHE = 'bongly-docscan-v4'
+const APP_SHELL = ['/', '/manifest.webmanifest', '/logo.png']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)).catch(() => {}),
+    caches.open(CACHE).then(async (cache) => {
+      for (const asset of APP_SHELL) {
+        try {
+          await cache.add(asset)
+        } catch {
+          // A single unavailable asset must not prevent the PWA installing.
+        }
+      }
+    }),
   )
   self.skipWaiting()
 })
@@ -19,13 +21,16 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))),
-      ),
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith('bongly-docscan-') && key !== CACHE)
+            .map((key) => caches.delete(key)),
+        ),
+      )
+      .then(() => self.clients.claim()),
   )
-  self.clients.claim()
 })
 
-// Cache-first for build assets (immutable hashed files), network-first otherwise.
 function isStaticAsset(url) {
   return (
     url.pathname.startsWith('/_next/static/') ||
@@ -36,6 +41,13 @@ function isStaticAsset(url) {
   )
 }
 
+async function cacheResponse(request, response) {
+  if (!response || !response.ok) return response
+  const cache = await caches.open(CACHE)
+  await cache.put(request, response.clone())
+  return response
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
   if (request.method !== 'GET') return
@@ -43,31 +55,33 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
 
-  // Cache-first for static assets so the app loads fully offline.
   if (isStaticAsset(url)) {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached
-        return fetch(request).then((response) => {
-          const copy = response.clone()
-          caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {})
-          return response
-        })
-      }),
+      caches.match(request).then((cached) =>
+        cached ||
+        fetch(request)
+          .then((response) => cacheResponse(request, response))
+          .catch(() => caches.match('/logo.png')),
+      ),
     )
     return
   }
 
-  // Network-first for navigations/pages, falling back to cache then app shell.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => cacheResponse(request, response))
+        .catch(async () => {
+          const cached = await caches.match(request)
+          return cached || caches.match('/')
+        }),
+    )
+    return
+  }
+
   event.respondWith(
     fetch(request)
-      .then((response) => {
-        const copy = response.clone()
-        caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {})
-        return response
-      })
-      .catch(() =>
-        caches.match(request).then((cached) => cached || caches.match('/')),
-      ),
+      .then((response) => cacheResponse(request, response))
+      .catch(() => caches.match(request)),
   )
 })
