@@ -1,5 +1,11 @@
-const CACHE = 'qds-v2'
-const APP_SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png']
+const CACHE = 'bongly-docscan-v3'
+const APP_SHELL = [
+  '/',
+  '/manifest.webmanifest',
+  '/logo.png',
+  '/icon-192.png',
+  '/icon-512.png',
+]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

@@ -31,8 +31,8 @@ export const metadata: Metadata = {
     title: 'Bongly DocScan',
   },
   icons: {
-    icon: '/icon.svg',
-    apple: '/apple-icon.png',
+    icon: '/logo.png',
+    apple: '/logo.png',
   },
 }
 
