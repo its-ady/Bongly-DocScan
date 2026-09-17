@@ -2,7 +2,7 @@
 
 **Bongly DocScan** একটি শক্তিশালী ডকুমেন্ট স্ক্যানিং এবং প্রসেসিং টুল যা আপনার ডিজিটাল ওয়ার্কফ্লোকে সহজ করে তোলে।
 
-🔗 **Live Demo**: [Bongly DocScan](https://bongly-docscan.netlify.app)
+🔗 **Live Demo**: [Bongly DocScan](https://bongly-docscan.vercel.app)
 
 ## বৈশিষ্ট্য ✨
 
@@ -65,4 +65,4 @@ npm start
 
 ---
 
-**GitHub: [রিপোজিটরি](https://github.com/DropsGM/bongly-docscan)**
+**GitHub: [রিপোজিটরি](https://github.com/its-ady/Bongly-DocScan)**
