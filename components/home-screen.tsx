@@ -25,7 +25,7 @@ export function HomeScreen() {
           <div className="flex flex-col items-center gap-4 text-center">
             <Image
               src="/logo.png"
-              alt="Bongly DocScan logo"
+              alt="Bongly DocScan scanner logo"
               width={144}
               height={144}
               priority
