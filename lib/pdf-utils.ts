@@ -147,12 +147,24 @@ export async function buildDocPdf(
 export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSize): Promise<Blob> {
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([595, 842])
+
+  // Others Docs is assembled with pdf-lib, so it must compress its source images
+  // explicitly. Without this step, PNG/JPEG bytes are embedded at their original
+  // size and the export-size setting has no effect.
+  const maxKB = maxKBFor(exportSize)
+  const pdfOverheadKB = 10 + images.length * 2
+  const perImageKB = maxKB === null || images.length === 0
+    ? null
+    : Math.max(5, Math.floor(Math.max(5, maxKB - pdfOverheadKB) / images.length))
+
   for (const image of images) {
-    const base64 = image.src.split(',')[1]
+    const compressed = await compressImage(image.src, perImageKB)
+    const base64 = compressed.split(',')[1]
     const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
-    const embedded = image.src.startsWith('data:image/png') ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes)
+    const embedded = await pdf.embedJpg(bytes)
     page.drawImage(embedded, { x: image.x, y: 842 - image.y - image.h, width: image.w, height: image.h })
   }
+
   const bytes = await pdf.save({ useObjectStreams: true })
   return new Blob([bytes], { type: 'application/pdf' })
 }
