@@ -264,8 +264,14 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
           setOtherImages(next)
           return next
         })
-        setPhase('arrange')
-      }
+        // Keep the scanner open so more documents can be captured before arranging.
+        setCapturedSrc(null)
+        setEnhancedSrc(null)
+        setEnhanced(false)
+        setCropQuad(null)
+        setPreviewSrc(null)
+        setPhase('camera')
+        }
       image.src = previewSrc
       return
     }
@@ -464,7 +470,17 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
       {/* Controls */}
       <footer className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
         {phase === 'camera' && !cameraError && (
-          <div className="flex items-center justify-center gap-6">
+          <div className="mx-auto flex w-full max-w-md flex-col gap-4">
+            {docId === 'others' && arrangedImages.length > 0 && (
+              <Button
+                onClick={() => setPhase('arrange')}
+                className="h-12 w-full text-base font-semibold"
+              >
+                Arrange Documents ({arrangedImages.length})
+                <ArrowRight className="h-5 w-5" />
+              </Button>
+            )}
+            <div className="flex items-center justify-center gap-6">
             <input
               ref={fileInputRef}
               type="file"
@@ -496,6 +512,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
                 )}
               </span>
             </button>
+            </div>
           </div>
         )}
 
