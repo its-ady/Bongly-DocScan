@@ -40,6 +40,7 @@ const emptyDocs: DocStore = {
   voter: {},
   pan: {},
   ration: {},
+  others: {},
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null)

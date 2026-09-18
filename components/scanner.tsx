@@ -19,6 +19,7 @@ import {
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { CropEditor } from '@/components/crop-editor'
+import { ArrangeEditor, type PlacedImage } from '@/components/arrange-editor'
 import { useSession } from '@/lib/session-store'
 import {
   warpPerspective,
@@ -27,10 +28,10 @@ import {
   enhanceImage,
   type Quad,
 } from '@/lib/image-utils'
-import { downloadSingleDoc } from '@/lib/pdf-utils'
+import { buildOthersPdf, downloadSingleDoc, othersPdfFileName } from '@/lib/pdf-utils'
 import { DOC_CONFIGS, getDocConfig, type DocId } from '@/lib/types'
 
-type Phase = 'camera' | 'crop' | 'preview' | 'done'
+type Phase = 'camera' | 'crop' | 'preview' | 'arrange' | 'done'
 
 interface Props {
   docId: DocId
@@ -52,6 +53,8 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const [processing, setProcessing] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const [flashOn, setFlashOn] = useState(false)
+  const [arrangedImages, setArrangedImages] = useState<PlacedImage[]>([])
+  const [arrangeMode, setArrangeMode] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -71,6 +74,8 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
     setEnhanced(false)
     setCropQuad(null)
     setPreviewSrc(null)
+    setArrangedImages([])
+    setArrangeMode(docId === 'others')
   }, [docId])
 
   const stopCamera = useCallback(() => {
@@ -250,6 +255,16 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   // Accept the straightened preview and move on.
   const acceptPreview = () => {
     if (!previewSrc) return
+    if (docId === 'others') {
+      const image = new Image()
+      image.onload = () => {
+        const width = 260
+        setArrangedImages((items) => [...items, { id: crypto.randomUUID(), src: previewSrc, x: 32, y: 32, w: width, h: width * image.height / image.width }])
+        setPhase('arrange')
+      }
+      image.src = previewSrc
+      return
+    }
     setDocSide(docId, currentSide, previewSrc)
     const isLastSide = sideIndex >= config.sides.length - 1
     if (isLastSide) {
@@ -268,7 +283,17 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const handleSavePdf = async () => {
     setProcessing(true)
     try {
-      await downloadSingleDoc(customerName, docId, docs[docId], exportSize)
+      if (docId === 'others') {
+        const blob = await buildOthersPdf(arrangedImages, exportSize)
+        const url = URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = othersPdfFileName(customerName)
+        anchor.click()
+        URL.revokeObjectURL(url)
+      } else {
+        await downloadSingleDoc(customerName, docId, docs[docId], exportSize)
+      }
       toast.success(`${config.name} PDF saved.`)
     } catch {
       toast.error('Could not generate the PDF.')
@@ -390,6 +415,15 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
               </button>
             </div>
           </>
+        )}
+
+        {phase === 'arrange' && (
+          <ArrangeEditor
+            images={arrangedImages}
+            onChange={setArrangedImages}
+            onAddPhoto={() => { setCapturedSrc(null); setPreviewSrc(null); setPhase('camera') }}
+            onConvert={() => setPhase('done')}
+          />
         )}
 
         {phase === 'preview' && previewSrc && (

@@ -11,6 +11,7 @@ import {
   Vote,
   IdCard,
   Wheat,
+  Files,
   ChevronRight,
   Loader2,
   Trash2,
@@ -27,6 +28,7 @@ const DOC_ICONS: Record<DocId, typeof CreditCard> = {
   voter: Vote,
   pan: IdCard,
   ration: Wheat,
+  others: Files,
 }
 
 export function DashboardScreen({

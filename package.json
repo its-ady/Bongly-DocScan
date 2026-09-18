@@ -3,7 +3,14 @@
   "version": "0.1.0",
   "description": "Fast client-side document scanner for Aadhaar, Voter, PAN and Ration cards. Export clean A4 PDFs with 100% on-device processing.",
   "author": "Bongly",
-  "keywords": ["document-scanner", "aadhaar", "voter-id", "pan-card", "ration-card", "pdf"],
+  "keywords": [
+    "document-scanner",
+    "aadhaar",
+    "voter-id",
+    "pan-card",
+    "ration-card",
+    "pdf"
+  ],
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -20,6 +27,7 @@
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
     "next-themes": "^0.4.6",
+    "pdf-lib": "^1.17.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "shadcn": "^4.8.0",

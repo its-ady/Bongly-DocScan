@@ -1,4 +1,4 @@
-export type DocId = 'aadhaar' | 'voter' | 'pan' | 'ration'
+export type DocId = 'aadhaar' | 'voter' | 'pan' | 'ration' | 'others'
 
 export type ExportSize =
   | 'original'
@@ -46,6 +46,12 @@ export const DOC_CONFIGS: DocConfig[] = [
     name: 'Ration Card',
     sides: ['front', 'back'],
     description: 'Front & back',
+  },
+  {
+    id: 'others',
+    name: 'Others Docs',
+    sides: ['front'],
+    description: 'Arrange multiple photos on A4',
   },
 ]
 

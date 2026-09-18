@@ -1,4 +1,8 @@
 import { jsPDF } from 'jspdf'
+import { PDFDocument } from 'pdf-lib'
+import type { PlacedImage } from '@/components/arrange-editor'
+
+type PdfImage = { src: string; w: number; h: number }
 import { compressImage } from '@/lib/image-utils'
 import {
   DOC_CONFIGS,
@@ -15,13 +19,13 @@ function maxKBFor(size: ExportSize): number | null {
   return EXPORT_SIZE_OPTIONS.find((o) => o.value === size)?.maxKB ?? null
 }
 
-function imageDims(dataUrl: string): Promise<{ w: number; h: number }> {
+function imageDims(src: string): Promise<{ w: number; h: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
     img.onerror = reject
-    img.src = dataUrl
+    img.src = src
   })
 }
 
@@ -41,19 +45,14 @@ const OLD_LONG = 90 // old voter / ration: 90 x 70            (ratio ~1.286)
 // Midpoint between the two ratios; above this we treat it as a standard card.
 const RATIO_THRESHOLD = 1.43
 
-interface PlacedImage {
-  dataUrl: string
-  w: number
-  h: number
-}
 
 // Portrait = held vertically (taller than wide). Square counts as portrait.
-function isPortrait(img: PlacedImage): boolean {
+function isPortrait(img: PdfImage): boolean {
   return img.h >= img.w
 }
 
 // Draw size (mm) close to the real card, keeping the image's exact aspect.
-function realSizeMM(img: PlacedImage): { w: number; h: number } {
+function realSizeMM(img: PdfImage): { w: number; h: number } {
   const longPx = Math.max(img.w, img.h)
   const shortPx = Math.max(1, Math.min(img.w, img.h))
   const ratio = longPx / shortPx // always >= 1
@@ -71,13 +70,13 @@ function realSizeMM(img: PlacedImage): { w: number; h: number } {
  * - Portrait cards sit SIDE BY SIDE; landscape cards sit TOP TO BOTTOM.
  * - Plenty of empty space is left on both sides and at the bottom.
  */
-function layoutSinglePage(doc: jsPDF, images: PlacedImage[]) {
+function layoutSinglePage(doc: jsPDF, images: PdfImage[]) {
   if (images.length === 1) {
     const img = images[0]
     const s = realSizeMM(img)
     const x = (A4_W - s.w) / 2
     const y = TOP_MARGIN
-    doc.addImage(img.dataUrl, 'JPEG', x, y, s.w, s.h, undefined, 'FAST')
+    doc.addImage(img.src, 'JPEG', x, y, s.w, s.h, undefined, 'FAST')
     return
   }
 
@@ -90,16 +89,16 @@ function layoutSinglePage(doc: jsPDF, images: PlacedImage[]) {
     const totalW = sA.w + CARD_GAP + sB.w
     const startX = (A4_W - totalW) / 2
     const y = TOP_MARGIN
-    doc.addImage(a.dataUrl, 'JPEG', startX, y, sA.w, sA.h, undefined, 'FAST')
-    doc.addImage(b.dataUrl, 'JPEG', startX + sA.w + CARD_GAP, y, sB.w, sB.h, undefined, 'FAST')
+    doc.addImage(a.src, 'JPEG', startX, y, sA.w, sA.h, undefined, 'FAST')
+    doc.addImage(b.src, 'JPEG', startX + sA.w + CARD_GAP, y, sB.w, sB.h, undefined, 'FAST')
   } else {
     // Top to bottom, each card centered horizontally, 1 cm between them.
     const xA = (A4_W - sA.w) / 2
     const xB = (A4_W - sB.w) / 2
     const yA = TOP_MARGIN
     const yB = TOP_MARGIN + sA.h + CARD_GAP
-    doc.addImage(a.dataUrl, 'JPEG', xA, yA, sA.w, sA.h, undefined, 'FAST')
-    doc.addImage(b.dataUrl, 'JPEG', xB, yB, sB.w, sB.h, undefined, 'FAST')
+    doc.addImage(a.src, 'JPEG', xA, yA, sA.w, sA.h, undefined, 'FAST')
+    doc.addImage(b.src, 'JPEG', xB, yB, sB.w, sB.h, undefined, 'FAST')
   }
 }
 
@@ -129,13 +128,13 @@ export async function buildDocPdf(
     perImageKB = Math.floor(availableKB / numSides)
   }
 
-  const images: PlacedImage[] = []
+  const images: PdfImage[] = []
   for (const side of config.sides) {
     const raw = data[side]
     if (!raw) continue
     const processed = await compressImage(raw, perImageKB)
     const { w, h } = await imageDims(processed)
-    images.push({ dataUrl: processed, w, h })
+    images.push({ src: processed, w, h })
   }
 
   if (images.length > 0) {
@@ -143,6 +142,24 @@ export async function buildDocPdf(
   }
 
   return doc.output('blob')
+}
+
+export async function buildOthersPdf(images: PlacedImage[], exportSize: ExportSize): Promise<Blob> {
+  const pdf = await PDFDocument.create()
+  const page = pdf.addPage([595, 842])
+  for (const image of images) {
+    const base64 = image.src.split(',')[1]
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
+    const embedded = image.src.startsWith('data:image/png') ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes)
+    page.drawImage(embedded, { x: image.x, y: 842 - image.y - image.h, width: image.w, height: image.h })
+  }
+  const bytes = await pdf.save({ useObjectStreams: true })
+  return new Blob([bytes], { type: 'application/pdf' })
+}
+
+export function othersPdfFileName(customerName: string): string {
+  const safeName = (customerName || 'Customer').replace(/[^\\p{L}\\p{N}_ -]/gu, '').trim() || 'Customer'
+  return `${safeName}_Others Docs.pdf`
 }
 
 export function pdfFileName(customerName: string, id: DocId): string {
