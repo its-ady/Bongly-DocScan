@@ -76,7 +76,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
     setPreviewSrc(null)
     setArrangedImages(docId === 'others' ? (docs.others.images ?? []) : [])
     setArrangeMode(docId === 'others')
-  }, [docId, docs.others.images])
+  }, [docId])
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
