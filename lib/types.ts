@@ -14,10 +14,21 @@ export interface DocConfig {
   description: string
 }
 
+export interface OtherImage {
+  id: string
+  src: string
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 export interface DocData {
   // data URLs of the cropped images, indexed by side order
   front?: string
   back?: string
+  // Cropped and arranged images for the Others Docs A4 document.
+  images?: OtherImage[]
 }
 
 export type DocStore = Record<DocId, DocData>
@@ -69,5 +80,6 @@ export function getDocConfig(id: DocId): DocConfig {
 
 export function isDocComplete(config: DocConfig, data: DocData | undefined): boolean {
   if (!data) return false
+  if (config.id === 'others') return Boolean(data.images?.length)
   return config.sides.every((side) => Boolean(data[side]))
 }

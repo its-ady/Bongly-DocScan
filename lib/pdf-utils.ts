@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf'
 import { PDFDocument } from 'pdf-lib'
-import type { PlacedImage } from '@/components/arrange-editor'
+import type { OtherImage } from '@/lib/types'
 
 type PdfImage = { src: string; w: number; h: number }
 import { compressImage } from '@/lib/image-utils'
@@ -144,7 +144,7 @@ export async function buildDocPdf(
   return doc.output('blob')
 }
 
-export async function buildOthersPdf(images: PlacedImage[], exportSize: ExportSize): Promise<Blob> {
+export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSize): Promise<Blob> {
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([595, 842])
   for (const image of images) {
@@ -209,8 +209,13 @@ export async function exportAllDocs(
   // Build all blobs first.
   const built: { name: string; blob: Blob }[] = []
   for (const config of completed) {
-    const blob = await buildDocPdf(config.id, docs[config.id], exportSize)
-    built.push({ name: pdfFileName(customerName, config.id), blob })
+    const blob = config.id === 'others'
+      ? await buildOthersPdf(docs.others.images ?? [], exportSize)
+      : await buildDocPdf(config.id, docs[config.id], exportSize)
+    built.push({
+      name: config.id === 'others' ? othersPdfFileName(customerName) : pdfFileName(customerName, config.id),
+      blob,
+    })
   }
 
   // Attempt folder export via File System Access API.

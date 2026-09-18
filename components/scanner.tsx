@@ -41,7 +41,7 @@ interface Props {
 
 export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const config = getDocConfig(docId)
-  const { customerName, setDocSide, docs, exportSize } = useSession()
+  const { customerName, setDocSide, setOtherImages, docs, exportSize } = useSession()
 
   const [sideIndex, setSideIndex] = useState(0)
   const [phase, setPhase] = useState<Phase>('camera')
@@ -74,9 +74,9 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
     setEnhanced(false)
     setCropQuad(null)
     setPreviewSrc(null)
-    setArrangedImages([])
+    setArrangedImages(docId === 'others' ? (docs.others.images ?? []) : [])
     setArrangeMode(docId === 'others')
-  }, [docId])
+  }, [docId, docs.others.images])
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -259,7 +259,11 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
       const image = new Image()
       image.onload = () => {
         const width = 260
-        setArrangedImages((items) => [...items, { id: crypto.randomUUID(), src: previewSrc, x: 32, y: 32, w: width, h: width * image.height / image.width }])
+        setArrangedImages((items) => {
+          const next = [...items, { id: crypto.randomUUID(), src: previewSrc, x: 32, y: 32, w: width, h: width * image.height / image.width }]
+          setOtherImages(next)
+          return next
+        })
         setPhase('arrange')
       }
       image.src = previewSrc
@@ -420,7 +424,10 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         {phase === 'arrange' && (
           <ArrangeEditor
             images={arrangedImages}
-            onChange={setArrangedImages}
+            onChange={(next) => {
+              setArrangedImages(next)
+              setOtherImages(next)
+            }}
             onAddPhoto={() => { setCapturedSrc(null); setPreviewSrc(null); setPhase('camera') }}
             onConvert={() => setPhase('done')}
           />
