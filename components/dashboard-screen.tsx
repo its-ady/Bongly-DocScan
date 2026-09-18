@@ -123,7 +123,11 @@ export function DashboardScreen({
             const data = docs[config.id]
             const started =
               !complete && !!data && config.sides.some((s) => !!data[s])
-            const anyCaptured = !!data && config.sides.some((s) => !!data[s])
+            const otherImageCount = data?.images?.length ?? 0
+            const anyCaptured =
+              config.id === 'others'
+                ? otherImageCount > 0
+                : !!data && config.sides.some((s) => !!data[s])
             return (
               <div
                 key={config.id}
@@ -157,28 +161,35 @@ export function DashboardScreen({
                     <p className="font-semibold leading-tight">{config.name}</p>
                     {/* Per-side upload status */}
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      {config.sides.map((side) => {
-                        const done = !!data?.[side]
-                        const label = side === 'front' ? 'Front' : 'Back'
-                        return (
-                          <span
-                            key={side}
-                            className={cn(
-                              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                              done
-                                ? 'bg-accent/10 text-accent'
-                                : 'bg-muted text-muted-foreground',
-                            )}
-                          >
-                            {done ? (
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                            ) : (
-                              <Circle className="h-3.5 w-3.5" />
-                            )}
-                            {label}
-                          </span>
-                        )
-                      })}
+                      {config.id === 'others' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          {otherImageCount} {otherImageCount === 1 ? 'document' : 'documents'} added
+                        </span>
+                      ) : (
+                        config.sides.map((side) => {
+                          const done = !!data?.[side]
+                          const label = side === 'front' ? 'Front' : 'Back'
+                          return (
+                            <span
+                              key={side}
+                              className={cn(
+                                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                                done
+                                  ? 'bg-accent/10 text-accent'
+                                  : 'bg-muted text-muted-foreground',
+                              )}
+                            >
+                              {done ? (
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                              ) : (
+                                <Circle className="h-3.5 w-3.5" />
+                              )}
+                              {label}
+                            </span>
+                          )
+                        })
+                      )}
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
