@@ -1,4 +1,4 @@
-export type DocId = 'aadhaar' | 'voter' | 'pan' | 'ration' | 'others'
+export type DocId = 'aadhaar' | 'voter' | 'pan' | 'ration' | 'others' | 'image-tools'
 
 export type ExportSize =
   | 'original'
@@ -63,6 +63,12 @@ export const DOC_CONFIGS: DocConfig[] = [
     name: 'Others Docs',
     sides: ['front'],
     description: 'Arrange multiple photos on A4',
+  },
+  {
+    id: 'image-tools',
+    name: 'Image Tools',
+    sides: ['front'],
+    description: 'Resize, crop, and save as JPG or PNG',
   },
 ]
 

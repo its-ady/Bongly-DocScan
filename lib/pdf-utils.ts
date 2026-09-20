@@ -240,7 +240,7 @@ export async function exportAllDocs(
   docs: DocStore,
   exportSize: ExportSize,
 ): Promise<ExportResult> {
-  const completed = DOC_CONFIGS.filter((c) => isDocComplete(c, docs[c.id]))
+  const completed = DOC_CONFIGS.filter((c) => c.id !== 'image-tools' && isDocComplete(c, docs[c.id]))
 
   // Build all blobs first.
   const built: { name: string; blob: Blob }[] = []

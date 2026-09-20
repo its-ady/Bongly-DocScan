@@ -12,6 +12,7 @@ import {
   IdCard,
   Wheat,
   Files,
+  Image,
   ChevronRight,
   Loader2,
   Trash2,
@@ -29,6 +30,7 @@ const DOC_ICONS: Record<DocId, typeof CreditCard> = {
   pan: IdCard,
   ration: Wheat,
   others: Files,
+  'image-tools': Image,
 }
 
 export function DashboardScreen({
@@ -43,7 +45,7 @@ export function DashboardScreen({
 
   const completedCount = useMemo(
     () =>
-      DOC_CONFIGS.filter((c) => isDocComplete(c, docs[c.id])).length,
+      DOC_CONFIGS.filter((c) => c.id !== 'image-tools' && isDocComplete(c, docs[c.id])).length,
     [docs],
   )
 

@@ -86,7 +86,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const displaySrc = enhanced && enhancedSrc ? enhancedSrc : capturedSrc
 
   useEffect(() => {
-    if (!cropPreset.ratio || !cropQuad || docId !== 'others') return
+    if (!cropPreset.ratio || !cropQuad || (docId !== 'others' && docId !== 'image-tools')) return
     const left = Math.min(cropQuad.tl.x, cropQuad.bl.x)
     const right = Math.max(cropQuad.tr.x, cropQuad.br.x)
     const top = Math.min(cropQuad.tl.y, cropQuad.tr.y)
@@ -331,7 +331,16 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const handleSavePdf = async () => {
     setProcessing(true)
     try {
-      if (docId === 'others') {
+      if (docId === 'image-tools' && previewSrc) {
+        const response = await fetch(previewSrc)
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = `${customerName}_Image.${outputFormat.label.toLowerCase()}`
+        anchor.click()
+        URL.revokeObjectURL(url)
+      } else if (docId === 'others') {
         const blob = await buildOthersPdf(arrangedImages, exportSize)
         const url = URL.createObjectURL(blob)
         const anchor = document.createElement('a')
@@ -431,7 +440,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
 
         {phase === 'crop' && displaySrc && cropQuad && (
           <>
-            {docId === 'others' && (
+            {(docId === 'others' || docId === 'image-tools') && (
               <div className="absolute inset-x-3 top-3 z-10 flex gap-2">
                 <label className="sr-only" htmlFor="crop-preset">Crop size</label>
                 <select id="crop-preset" value={cropPreset.label} onChange={(e) => setCropPreset(CROP_PRESETS.find((preset) => preset.label === e.target.value) ?? CROP_PRESETS[0])} className="min-w-0 flex-1 rounded-lg border border-white/20 bg-black/70 px-3 py-2 text-sm text-white backdrop-blur">
@@ -446,7 +455,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
             <CropEditor
               src={displaySrc}
               initialQuad={cropQuad}
-              lockedAspectRatio={docId === 'others' ? cropPreset.ratio : undefined}
+              lockedAspectRatio={docId === 'others' || docId === 'image-tools' ? cropPreset.ratio : undefined}
               onChange={(q) => {
                 liveQuadRef.current = q
               }}
@@ -508,10 +517,10 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">
-                {config.name} captured
+                {config.name} ready
               </h2>
               <p className="mt-1 text-sm text-white/70">
-                {customerName}_{config.name.split(' ')[0]}.pdf is ready.
+                {docId === 'image-tools' ? 'Your resized image is ready to save.' : `${customerName}_${config.name.split(' ')[0]}.pdf is ready.`}
               </p>
             </div>
           </div>
@@ -582,7 +591,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
                 ) : (
                   <Check className="h-5 w-5" />
                 )}
-                Straighten
+                {docId === 'image-tools' ? 'Crop Image' : 'Straighten'}
               </Button>
             </div>
           </div>
@@ -628,7 +637,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
               ) : (
                 <Download className="h-5 w-5" />
               )}
-              Save this PDF now
+              {docId === 'image-tools' ? `Save as ${outputFormat.label}` : 'Save this PDF now'}
             </Button>
             {nextDoc ? (
               <Button
