@@ -48,6 +48,7 @@ const CROP_PRESETS: CropPreset[] = [
 
 const OUTPUT_FORMATS = [
   { label: 'JPG', mimeType: 'image/jpeg' as const },
+  { label: 'JPEG', mimeType: 'image/jpeg' as const },
   { label: 'PNG', mimeType: 'image/png' as const },
 ]
 
