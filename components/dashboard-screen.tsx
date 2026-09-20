@@ -58,7 +58,7 @@ export function DashboardScreen({
     try {
       const result = await exportAllDocs(customerName, docs, exportSize)
       if (result.method === 'folder') {
-        toast.success(`Saved ${result.count} PDF(s) to the chosen folder.`, {
+        toast.success(`Saved ${result.count} file(s) to the chosen folder.`, {
           duration: 2000,
         })
       } else {

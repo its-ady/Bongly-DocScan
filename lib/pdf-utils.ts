@@ -204,6 +204,12 @@ export function pdfFileName(customerName: string, id: DocId): string {
   return `${safeName}_${label}.pdf`
 }
 
+function imageFileName(customerName: string, src: string): string {
+  const safeName = (customerName || 'Customer').replace(/[^\p{L}\p{N}_ -]/gu, '').trim() || 'Customer'
+  const extension = src.startsWith('data:image/png') ? 'png' : 'jpg'
+  return `${safeName}_Image.${extension}`
+}
+
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -240,11 +246,19 @@ export async function exportAllDocs(
   docs: DocStore,
   exportSize: ExportSize,
 ): Promise<ExportResult> {
-  const completed = DOC_CONFIGS.filter((c) => c.id !== 'image-tools' && isDocComplete(c, docs[c.id]))
+  const completed = DOC_CONFIGS.filter((c) => isDocComplete(c, docs[c.id]))
 
-  // Build all blobs first.
+  // Build all files first so PDFs and Image Tools output are exported together.
   const built: { name: string; blob: Blob }[] = []
   for (const config of completed) {
+    if (config.id === 'image-tools') {
+      const src = docs['image-tools'].front
+      if (!src) continue
+      const response = await fetch(src)
+      built.push({ name: imageFileName(customerName, src), blob: await response.blob() })
+      continue
+    }
+
     const blob = config.id === 'others'
       ? await buildOthersPdf(docs.others.images ?? [], exportSize)
       : await buildDocPdf(config.id, docs[config.id], exportSize)

@@ -352,7 +352,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
       } else {
         await downloadSingleDoc(customerName, docId, docs[docId], exportSize)
       }
-      toast.success(`${config.name} PDF saved.`)
+      toast.success(docId === 'image-tools' ? `${config.name} image saved.` : `${config.name} PDF saved.`)
     } catch {
       toast.error('Could not generate the PDF.')
     } finally {
