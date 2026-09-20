@@ -26,12 +26,30 @@ import {
   detectDocumentQuad,
   rotateImage90,
   enhanceImage,
+  cropImage,
   type Quad,
 } from '@/lib/image-utils'
 import { buildOthersPdf, downloadSingleDoc, othersPdfFileName } from '@/lib/pdf-utils'
 import { DOC_CONFIGS, getDocConfig, type DocId } from '@/lib/types'
 
 type Phase = 'camera' | 'crop' | 'preview' | 'arrange' | 'done'
+type CropPreset = { label: string; ratio?: number; width?: number; height?: number }
+
+const CROP_PRESETS: CropPreset[] = [
+  { label: 'Free Crop' },
+  { label: '3.5 cm × 4.5 cm', ratio: 7 / 9, width: 200, height: 230 },
+  { label: '2.5 cm × 3.5 cm', ratio: 5 / 7, width: 150, height: 210 },
+  { label: '3.5 cm × 3.5 cm', ratio: 1, width: 300, height: 300 },
+  { label: '4 in × 6 in', ratio: 2 / 3, width: 600, height: 900 },
+  { label: '3.5 cm × 1.5 cm', ratio: 7 / 3, width: 140, height: 60 },
+  { label: '4.5 cm × 2 cm', ratio: 9 / 4, width: 180, height: 80 },
+  { label: '3 cm × 1 cm', ratio: 3, width: 180, height: 60 },
+]
+
+const OUTPUT_FORMATS = [
+  { label: 'JPG', mimeType: 'image/jpeg' as const },
+  { label: 'PNG', mimeType: 'image/png' as const },
+]
 
 interface Props {
   docId: DocId
@@ -55,6 +73,8 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const [flashOn, setFlashOn] = useState(false)
   const [arrangedImages, setArrangedImages] = useState<PlacedImage[]>([])
   const [arrangeMode, setArrangeMode] = useState(false)
+  const [cropPreset, setCropPreset] = useState<CropPreset>(CROP_PRESETS[0])
+  const [outputFormat, setOutputFormat] = useState(OUTPUT_FORMATS[0])
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -64,6 +84,20 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const currentSide = config.sides[sideIndex]
   // Image currently shown in the crop editor (enhanced version when toggled on).
   const displaySrc = enhanced && enhancedSrc ? enhancedSrc : capturedSrc
+
+  useEffect(() => {
+    if (!cropPreset.ratio || !cropQuad || docId !== 'others') return
+    const left = Math.min(cropQuad.tl.x, cropQuad.bl.x)
+    const right = Math.max(cropQuad.tr.x, cropQuad.br.x)
+    const top = Math.min(cropQuad.tl.y, cropQuad.tr.y)
+    const bottom = Math.max(cropQuad.bl.y, cropQuad.br.y)
+    const width = right - left
+    const height = width / cropPreset.ratio
+    const centerY = (top + bottom) / 2
+    const next: Quad = { tl: { x: left, y: centerY - height / 2 }, tr: { x: right, y: centerY - height / 2 }, br: { x: right, y: centerY + height / 2 }, bl: { x: left, y: centerY + height / 2 } }
+    setCropQuad(next)
+    liveQuadRef.current = next
+  }, [cropPreset, docId])
 
   // Reset everything when the document changes (Scan Next Document).
   useEffect(() => {
@@ -237,7 +271,17 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
     setProcessing(true)
     try {
       const straightened = await warpPerspective(displaySrc, liveQuadRef.current)
-      setPreviewSrc(straightened)
+      let output = straightened
+      if (cropPreset.width && cropPreset.height) {
+        const image = new Image()
+        await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = reject; image.src = straightened })
+        output = await cropImage(straightened, { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight }, { width: cropPreset.width, height: cropPreset.height, mimeType: outputFormat.mimeType })
+      } else if (outputFormat.mimeType !== 'image/jpeg') {
+        const image = new Image()
+        await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = reject; image.src = straightened })
+        output = await cropImage(straightened, { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight }, { mimeType: outputFormat.mimeType })
+      }
+      setPreviewSrc(output)
       setPhase('preview')
     } catch {
       toast.error('Could not crop the image.')
@@ -387,9 +431,22 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
 
         {phase === 'crop' && displaySrc && cropQuad && (
           <>
+            {docId === 'others' && (
+              <div className="absolute inset-x-3 top-3 z-10 flex gap-2">
+                <label className="sr-only" htmlFor="crop-preset">Crop size</label>
+                <select id="crop-preset" value={cropPreset.label} onChange={(e) => setCropPreset(CROP_PRESETS.find((preset) => preset.label === e.target.value) ?? CROP_PRESETS[0])} className="min-w-0 flex-1 rounded-lg border border-white/20 bg-black/70 px-3 py-2 text-sm text-white backdrop-blur">
+                  {CROP_PRESETS.map((preset) => <option key={preset.label} value={preset.label}>{preset.label}</option>)}
+                </select>
+                <label className="sr-only" htmlFor="output-format">Output format</label>
+                <select id="output-format" value={outputFormat.label} onChange={(e) => setOutputFormat(OUTPUT_FORMATS.find((format) => format.label === e.target.value) ?? OUTPUT_FORMATS[0])} className="w-24 rounded-lg border border-white/20 bg-black/70 px-3 py-2 text-sm text-white backdrop-blur">
+                  {OUTPUT_FORMATS.map((format) => <option key={format.label} value={format.label}>{format.label}</option>)}
+                </select>
+              </div>
+            )}
             <CropEditor
               src={displaySrc}
               initialQuad={cropQuad}
+              lockedAspectRatio={docId === 'others' ? cropPreset.ratio : undefined}
               onChange={(q) => {
                 liveQuadRef.current = q
               }}

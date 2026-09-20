@@ -8,6 +8,7 @@ interface Props {
   // initial quad in natural image pixels
   initialQuad: Quad
   onChange: (quad: Quad) => void
+  lockedAspectRatio?: number
 }
 
 type Corner = 'tl' | 'tr' | 'br' | 'bl'
@@ -24,7 +25,7 @@ const EDGE_CORNERS: Record<Edge, [Corner, Corner]> = {
 
 const HANDLE_HIT = 30 // px touch target
 
-export function CropEditor({ src, initialQuad, onChange }: Props) {
+export function CropEditor({ src, initialQuad, onChange, lockedAspectRatio }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
   // layout describes how the natural image maps onto the displayed element
@@ -128,7 +129,22 @@ export function CropEditor({ src, initialQuad, onChange }: Props) {
         x: s[corner].x + dxNat,
         y: s[corner].y + dyNat,
       })
-      next = { ...s, [corner]: moved }
+      if (lockedAspectRatio) {
+        const opposite = { tl: 'br', tr: 'bl', br: 'tl', bl: 'tr' }[corner] as Corner
+        const anchor = s[opposite]
+        const width = Math.abs(moved.x - anchor.x)
+        const height = width / lockedAspectRatio
+        const directionY = moved.y >= anchor.y ? 1 : -1
+        const adjusted = clampPoint({ x: moved.x, y: anchor.y + directionY * height })
+        next = {
+          tl: { x: Math.min(anchor.x, adjusted.x), y: Math.min(anchor.y, adjusted.y) },
+          tr: { x: Math.max(anchor.x, adjusted.x), y: Math.min(anchor.y, adjusted.y) },
+          br: { x: Math.max(anchor.x, adjusted.x), y: Math.max(anchor.y, adjusted.y) },
+          bl: { x: Math.min(anchor.x, adjusted.x), y: Math.max(anchor.y, adjusted.y) },
+        }
+      } else {
+        next = { ...s, [corner]: moved }
+      }
     }
 
     setQuad(next)

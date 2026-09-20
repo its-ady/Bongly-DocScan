@@ -21,11 +21,13 @@ function loadImage(src: string): Promise<HTMLImageElement> {
  * Crop an image (data URL) to the given rectangle expressed in NATURAL pixel
  * coordinates of the source image. Returns a JPEG data URL.
  */
-export async function cropImage(src: string, rect: CropRect): Promise<string> {
+export async function cropImage(src: string, rect: CropRect, options?: { width?: number; height?: number; mimeType?: 'image/jpeg' | 'image/png' | 'image/webp'; quality?: number }): Promise<string> {
   const img = await loadImage(src)
   const canvas = document.createElement('canvas')
-  const w = Math.max(1, Math.round(rect.width))
-  const h = Math.max(1, Math.round(rect.height))
+  const sourceW = Math.max(1, Math.round(rect.width))
+  const sourceH = Math.max(1, Math.round(rect.height))
+  const w = options?.width ?? sourceW
+  const h = options?.height ?? sourceH
   canvas.width = w
   canvas.height = h
   const ctx = canvas.getContext('2d')!
@@ -34,14 +36,14 @@ export async function cropImage(src: string, rect: CropRect): Promise<string> {
     img,
     Math.round(rect.x),
     Math.round(rect.y),
-    w,
-    h,
+    sourceW,
+    sourceH,
     0,
     0,
     w,
     h,
   )
-  return canvas.toDataURL('image/jpeg', 0.95)
+  return canvas.toDataURL(options?.mimeType ?? 'image/jpeg', options?.quality ?? 0.95)
 }
 
 /**
