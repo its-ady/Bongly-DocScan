@@ -35,15 +35,17 @@ import { DOC_CONFIGS, getDocConfig, type DocId } from '@/lib/types'
 type Phase = 'camera' | 'crop' | 'preview' | 'arrange' | 'done'
 type CropPreset = { label: string; ratio?: number; width?: number; height?: number }
 
+const CROP_DPI = 300
+const mmToPixels = (mm: number) => Math.round((mm / 25.4) * CROP_DPI)
+
 const CROP_PRESETS: CropPreset[] = [
   { label: 'Free Crop' },
-  { label: '3.5 cm × 4.5 cm', ratio: 7 / 9, width: 200, height: 230 },
-  { label: '2.5 cm × 3.5 cm', ratio: 5 / 7, width: 150, height: 210 },
-  { label: '3.5 cm × 3.5 cm', ratio: 1, width: 300, height: 300 },
-  { label: '4 in × 6 in', ratio: 2 / 3, width: 600, height: 900 },
-  { label: '3.5 cm × 1.5 cm', ratio: 7 / 3, width: 140, height: 60 },
-  { label: '4.5 cm × 2 cm', ratio: 9 / 4, width: 180, height: 80 },
-  { label: '3 cm × 1 cm', ratio: 3, width: 180, height: 60 },
+  { label: '35 mm × 45 mm', ratio: 35 / 45, width: mmToPixels(35), height: mmToPixels(45) },
+  { label: '25 mm × 35 mm', ratio: 25 / 35, width: mmToPixels(25), height: mmToPixels(35) },
+  { label: '35 mm × 35 mm', ratio: 1, width: mmToPixels(35), height: mmToPixels(35) },
+  { label: '20 mm × 25 mm', ratio: 20 / 25, width: mmToPixels(20), height: mmToPixels(25) },
+  { label: '50 mm × 70 mm', ratio: 50 / 70, width: mmToPixels(50), height: mmToPixels(70) },
+  { label: '2 in × 2 in', ratio: 1, width: 2 * CROP_DPI, height: 2 * CROP_DPI },
 ]
 
 const OUTPUT_FORMATS = [
