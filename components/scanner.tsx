@@ -87,7 +87,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const displaySrc = enhanced && enhancedSrc ? enhancedSrc : capturedSrc
 
   useEffect(() => {
-    if (!cropPreset.ratio || !cropQuad || (docId !== 'others' && docId !== 'image-tools')) return
+    if (!cropPreset.ratio || !cropQuad || docId !== 'image-tools') return
     const left = Math.min(cropQuad.tl.x, cropQuad.bl.x)
     const right = Math.max(cropQuad.tr.x, cropQuad.br.x)
     const top = Math.min(cropQuad.tl.y, cropQuad.tr.y)
@@ -441,7 +441,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
 
         {phase === 'crop' && displaySrc && cropQuad && (
           <>
-            {(docId === 'others' || docId === 'image-tools') && (
+            {docId === 'image-tools' && (
               <div className="absolute inset-x-3 top-3 z-10 flex gap-2">
                 <label className="sr-only" htmlFor="crop-preset">Crop size</label>
                 <select id="crop-preset" value={cropPreset.label} onChange={(e) => setCropPreset(CROP_PRESETS.find((preset) => preset.label === e.target.value) ?? CROP_PRESETS[0])} className="min-w-0 flex-1 rounded-lg border border-white/20 bg-black/70 px-3 py-2 text-sm text-white backdrop-blur">
@@ -456,7 +456,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
             <CropEditor
               src={displaySrc}
               initialQuad={cropQuad}
-              lockedAspectRatio={docId === 'others' || docId === 'image-tools' ? cropPreset.ratio : undefined}
+              lockedAspectRatio={docId === 'image-tools' ? cropPreset.ratio : undefined}
               onChange={(q) => {
                 liveQuadRef.current = q
               }}
