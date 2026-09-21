@@ -180,7 +180,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
       canvas.height = video.videoHeight
       const ctx = canvas.getContext('2d')!
       ctx.drawImage(video, 0, 0)
-      const src = canvas.toDataURL('image/jpeg', 0.95)
+      const src = canvas.toDataURL('image/jpeg', 1.0)
       setCapturedSrc(src)
       const detected = await detectDocumentQuad(src)
       setCropQuad(detected)

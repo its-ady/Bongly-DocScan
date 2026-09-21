@@ -43,7 +43,7 @@ export async function cropImage(src: string, rect: CropRect, options?: { width?:
     w,
     h,
   )
-  return canvas.toDataURL(options?.mimeType ?? 'image/jpeg', options?.quality ?? 0.95)
+  return canvas.toDataURL(options?.mimeType ?? 'image/jpeg', options?.quality ?? 1.0)
 }
 
 /**
@@ -159,7 +159,7 @@ export async function rotateImage90(src: string): Promise<string> {
   ctx.translate(h, 0)
   ctx.rotate(Math.PI / 2)
   ctx.drawImage(img, 0, 0)
-  return canvas.toDataURL('image/jpeg', 0.95)
+  return canvas.toDataURL('image/jpeg', 1.0)
 }
 
 /**
@@ -178,7 +178,7 @@ export async function enhanceImage(src: string): Promise<string> {
   // CSS-style filters give a good, cheap clean-up effect for ID photos.
   ctx.filter = 'contrast(1.25) brightness(1.08) saturate(1.15)'
   ctx.drawImage(img, 0, 0)
-  return canvas.toDataURL('image/jpeg', 0.95)
+  return canvas.toDataURL('image/jpeg', 1.0)
 }
 
 // ---------------------------------------------------------------------------
@@ -378,7 +378,7 @@ export async function compressImage(
   }
 
   if (maxKB === null) {
-    return render(1, 0.92)
+    return render(1, 1.0)
   }
 
   const maxBytes = maxKB * 1024
