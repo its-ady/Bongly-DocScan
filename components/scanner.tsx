@@ -278,7 +278,29 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
       if (cropPreset.width && cropPreset.height) {
         const image = new Image()
         await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = reject; image.src = straightened })
-        output = await cropImage(straightened, { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight }, { width: cropPreset.width, height: cropPreset.height, mimeType: outputFormat.mimeType })
+        const targetRatio = cropPreset.width / cropPreset.height
+        const sourceRatio = image.naturalWidth / image.naturalHeight
+        let sourceWidth = image.naturalWidth
+        let sourceHeight = image.naturalHeight
+        let sourceX = 0
+        let sourceY = 0
+
+        // Keep the selected output size without stretching the photo. If
+        // perspective correction leaves a tiny ratio difference, trim only
+        // the excess edges before scaling to the requested 300 DPI pixels.
+        if (sourceRatio > targetRatio) {
+          sourceWidth = image.naturalHeight * targetRatio
+          sourceX = (image.naturalWidth - sourceWidth) / 2
+        } else if (sourceRatio < targetRatio) {
+          sourceHeight = image.naturalWidth / targetRatio
+          sourceY = (image.naturalHeight - sourceHeight) / 2
+        }
+
+        output = await cropImage(
+          straightened,
+          { x: sourceX, y: sourceY, width: sourceWidth, height: sourceHeight },
+          { width: cropPreset.width, height: cropPreset.height, mimeType: outputFormat.mimeType },
+        )
       } else if (outputFormat.mimeType !== 'image/jpeg') {
         const image = new Image()
         await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = reject; image.src = straightened })
