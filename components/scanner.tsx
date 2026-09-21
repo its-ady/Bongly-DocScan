@@ -386,10 +386,32 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         >
           <X className="h-6 w-6" />
         </Button>
-        <div className="text-center">
+        <div className="flex min-w-0 flex-1 flex-col items-center text-center">
           <p className="text-sm font-semibold">{config.name}</p>
           {phase !== 'done' && (
             <p className="text-xs text-white/70">{stepText}</p>
+          )}
+          {phase === 'crop' && docId === 'image-tools' && (
+            <div className="mt-3 flex w-full max-w-md gap-2">
+              <label className="sr-only" htmlFor="crop-preset">Crop size</label>
+              <select
+                id="crop-preset"
+                value={cropPreset.label}
+                onChange={(e) => setCropPreset(CROP_PRESETS.find((preset) => preset.label === e.target.value) ?? CROP_PRESETS[0])}
+                className="min-w-0 flex-1 rounded-lg border border-white/20 bg-black/70 px-3 py-2 text-sm text-white backdrop-blur"
+              >
+                {CROP_PRESETS.map((preset) => <option key={preset.label} value={preset.label}>{preset.label}</option>)}
+              </select>
+              <label className="sr-only" htmlFor="output-format">Output format</label>
+              <select
+                id="output-format"
+                value={outputFormat.label}
+                onChange={(e) => setOutputFormat(OUTPUT_FORMATS.find((format) => format.label === e.target.value) ?? OUTPUT_FORMATS[0])}
+                className="w-24 rounded-lg border border-white/20 bg-black/70 px-3 py-2 text-sm text-white backdrop-blur"
+              >
+                {OUTPUT_FORMATS.map((format) => <option key={format.label} value={format.label}>{format.label}</option>)}
+              </select>
+            </div>
           )}
         </div>
         <div className="w-10" />
@@ -441,18 +463,6 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
 
         {phase === 'crop' && displaySrc && cropQuad && (
           <>
-            {docId === 'image-tools' && (
-              <div className="absolute inset-x-3 top-3 z-10 flex gap-2">
-                <label className="sr-only" htmlFor="crop-preset">Crop size</label>
-                <select id="crop-preset" value={cropPreset.label} onChange={(e) => setCropPreset(CROP_PRESETS.find((preset) => preset.label === e.target.value) ?? CROP_PRESETS[0])} className="min-w-0 flex-1 rounded-lg border border-white/20 bg-black/70 px-3 py-2 text-sm text-white backdrop-blur">
-                  {CROP_PRESETS.map((preset) => <option key={preset.label} value={preset.label}>{preset.label}</option>)}
-                </select>
-                <label className="sr-only" htmlFor="output-format">Output format</label>
-                <select id="output-format" value={outputFormat.label} onChange={(e) => setOutputFormat(OUTPUT_FORMATS.find((format) => format.label === e.target.value) ?? OUTPUT_FORMATS[0])} className="w-24 rounded-lg border border-white/20 bg-black/70 px-3 py-2 text-sm text-white backdrop-blur">
-                  {OUTPUT_FORMATS.map((format) => <option key={format.label} value={format.label}>{format.label}</option>)}
-                </select>
-              </div>
-            )}
             <CropEditor
               src={displaySrc}
               initialQuad={cropQuad}
