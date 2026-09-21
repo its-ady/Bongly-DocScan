@@ -44,8 +44,7 @@ export function DashboardScreen({
   const [exporting, setExporting] = useState(false)
 
   const completedCount = useMemo(
-    () =>
-      DOC_CONFIGS.filter((c) => c.id !== 'image-tools' && isDocComplete(c, docs[c.id])).length,
+    () => DOC_CONFIGS.filter((c) => isDocComplete(c, docs[c.id])).length,
     [docs],
   )
 
