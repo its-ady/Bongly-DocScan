@@ -247,6 +247,7 @@ export async function exportAllDocs(
   exportSize: ExportSize,
 ): Promise<ExportResult> {
   const completed = DOC_CONFIGS.filter((c) => isDocComplete(c, docs[c.id]))
+  const maxKB = maxKBFor(exportSize)
 
   // Build all files first so PDFs and Image Tools output are exported together.
   const built: { name: string; blob: Blob }[] = []
@@ -254,8 +255,9 @@ export async function exportAllDocs(
     if (config.id === 'image-tools') {
       const src = docs['image-tools'].front
       if (!src) continue
-      const response = await fetch(src)
-      built.push({ name: imageFileName(customerName, src), blob: await response.blob() })
+      const output = maxKB === null ? src : await compressImage(src, maxKB)
+      const response = await fetch(output)
+      built.push({ name: imageFileName(customerName, output), blob: await response.blob() })
       continue
     }
 
