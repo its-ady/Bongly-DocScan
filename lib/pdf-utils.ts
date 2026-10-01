@@ -253,7 +253,9 @@ export async function exportAllDocs(
   const built: { name: string; blob: Blob }[] = []
   for (const config of completed) {
     if (config.id === 'image-tools') {
-      const src = docs['image-tools'].front
+      // Older sessions may have stored the single image under `back`; accept
+      // both keys so the dashboard and export stay in sync after navigation.
+      const src = docs['image-tools'].front ?? docs['image-tools'].back
       if (!src) continue
       const output = maxKB === null ? src : await compressImage(src, maxKB)
       const response = await fetch(output)

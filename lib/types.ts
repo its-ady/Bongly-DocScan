@@ -87,5 +87,8 @@ export function getDocConfig(id: DocId): DocConfig {
 export function isDocComplete(config: DocConfig, data: DocData | undefined): boolean {
   if (!data) return false
   if (config.id === 'others') return Boolean(data.images?.length)
+  // Image Tools is a single exported image. Accept either side for backwards
+  // compatibility with sessions saved before it became a dedicated tool.
+  if (config.id === 'image-tools') return Boolean(data.front || data.back)
   return config.sides.every((side) => Boolean(data[side]))
 }
