@@ -114,34 +114,40 @@ export async function buildDocPdf(
 ): Promise<Blob> {
   const config = getDocConfig(id)
   const maxKB = maxKBFor(exportSize)
-  const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
-
-  // Estimate PDF overhead (header, metadata, etc.) - roughly 5-10 KB for A4 page
-  const pdfOverheadKB = 8
   const numSides = config.sides.filter((side) => data[side]).length
-  
-  // Divide remaining budget equally among images
-  // E.g., if maxKB is 200 and we have 2 images, each gets ~96 KB max
-  let perImageKB: number | null = null
-  if (maxKB && numSides > 0) {
-    const availableKB = Math.max(5, maxKB - pdfOverheadKB)
-    perImageKB = Math.floor(availableKB / numSides)
+  const build = async (perImageKB: number | null): Promise<Blob> => {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
+    const images: PdfImage[] = []
+
+    for (const side of config.sides) {
+      const raw = data[side]
+      if (!raw) continue
+      const processed = await compressImage(raw, perImageKB)
+      const { w, h } = await imageDims(processed)
+      images.push({ src: processed, w, h })
+    }
+
+    if (images.length > 0) layoutSinglePage(doc, images)
+    return doc.output('blob')
   }
 
-  const images: PdfImage[] = []
-  for (const side of config.sides) {
-    const raw = data[side]
-    if (!raw) continue
-    const processed = await compressImage(raw, perImageKB)
-    const { w, h } = await imageDims(processed)
-    images.push({ src: processed, w, h })
+  if (maxKB === null || numSides === 0) return build(null)
+
+  const maxBytes = maxKB * 1024
+  // Reserve space for the PDF container, then verify the complete PDF because
+  // jsPDF overhead varies with image dimensions and document metadata.
+  let perImageKB = Math.max(2, Math.floor(Math.max(2, maxKB - 16) / numSides))
+  let blob = await build(perImageKB)
+
+  for (let attempt = 0; attempt < 8 && blob.size > maxBytes; attempt++) {
+    const ratio = Math.sqrt(maxBytes / blob.size) * 0.96
+    const nextBudget = Math.max(2, Math.floor(perImageKB * ratio))
+    if (nextBudget >= perImageKB) break
+    perImageKB = nextBudget
+    blob = await build(perImageKB)
   }
 
-  if (images.length > 0) {
-    layoutSinglePage(doc, images)
-  }
-
-  return doc.output('blob')
+  return blob
 }
 
 export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSize): Promise<Blob> {
