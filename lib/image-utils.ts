@@ -322,21 +322,21 @@ export async function warpPerspective(
       const fx = (H[0] * u + H[1] * v + H[2]) / denom
       const fy = (H[3] * u + H[4] * v + H[5]) / denom
       const oi = (v * outW + u) * 4
-      if (fx < 0 || fy < 0 || fx >= sw - 1 || fy >= sh - 1) {
-        op[oi] = 255
-        op[oi + 1] = 255
-        op[oi + 2] = 255
-        op[oi + 3] = 255
-        continue
-      }
-      const x0 = Math.floor(fx)
-      const y0 = Math.floor(fy)
-      const dx = fx - x0
-      const dy = fy - y0
+      // Clamp edge samples to the source image instead of painting out-of-bounds
+      // pixels white. The old boundary check created a visible white strip when
+      // the selected quad reached the right or bottom edge of the photo.
+      const safeFx = Math.min(sw - 1, Math.max(0, fx))
+      const safeFy = Math.min(sh - 1, Math.max(0, fy))
+      const x0 = Math.floor(safeFx)
+      const y0 = Math.floor(safeFy)
+      const x1 = Math.min(sw - 1, x0 + 1)
+      const y1 = Math.min(sh - 1, y0 + 1)
+      const dx = safeFx - x0
+      const dy = safeFy - y0
       const i00 = (y0 * sw + x0) * 4
-      const i10 = i00 + 4
-      const i01 = i00 + sw * 4
-      const i11 = i01 + 4
+      const i10 = (y0 * sw + x1) * 4
+      const i01 = (y1 * sw + x0) * 4
+      const i11 = (y1 * sw + x1) * 4
       for (let c = 0; c < 3; c++) {
         const top = sdata[i00 + c] * (1 - dx) + sdata[i10 + c] * dx
         const bot = sdata[i01 + c] * (1 - dx) + sdata[i11 + c] * dx
