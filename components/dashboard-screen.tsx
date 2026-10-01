@@ -163,8 +163,19 @@ export function DashboardScreen({
                     {/* Per-side upload status */}
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       {config.id === 'others' ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                            otherImageCount > 0
+                              ? 'bg-accent/10 text-accent'
+                              : 'bg-muted text-muted-foreground',
+                          )}
+                        >
+                          {otherImageCount > 0 ? (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          ) : (
+                            <Circle className="h-3.5 w-3.5" />
+                          )}
                           {otherImageCount} {otherImageCount === 1 ? 'document' : 'documents'} added
                         </span>
                       ) : (
