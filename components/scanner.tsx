@@ -27,6 +27,7 @@ import {
   rotateImage90,
   enhanceImage,
   cropImage,
+  getImageDimensions,
   type Quad,
 } from '@/lib/image-utils'
 import { buildOthersPdf, downloadSingleDoc, othersPdfFileName } from '@/lib/pdf-utils'
@@ -276,12 +277,11 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
       const straightened = await warpPerspective(displaySrc, liveQuadRef.current)
       let output = straightened
       if (cropPreset.width && cropPreset.height) {
-        const image = new Image()
-        await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = reject; image.src = straightened })
+        const { width: naturalWidth, height: naturalHeight } = await getImageDimensions(straightened)
         const targetRatio = cropPreset.width / cropPreset.height
-        const sourceRatio = image.naturalWidth / image.naturalHeight
-        let sourceWidth = image.naturalWidth
-        let sourceHeight = image.naturalHeight
+        const sourceRatio = naturalWidth / naturalHeight
+        let sourceWidth = naturalWidth
+        let sourceHeight = naturalHeight
         let sourceX = 0
         let sourceY = 0
 
@@ -289,11 +289,11 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         // perspective correction leaves a tiny ratio difference, trim only
         // the excess edges before scaling to the requested 300 DPI pixels.
         if (sourceRatio > targetRatio) {
-          sourceWidth = image.naturalHeight * targetRatio
-          sourceX = (image.naturalWidth - sourceWidth) / 2
+          sourceWidth = naturalHeight * targetRatio
+          sourceX = (naturalWidth - sourceWidth) / 2
         } else if (sourceRatio < targetRatio) {
-          sourceHeight = image.naturalWidth / targetRatio
-          sourceY = (image.naturalHeight - sourceHeight) / 2
+          sourceHeight = naturalWidth / targetRatio
+          sourceY = (naturalHeight - sourceHeight) / 2
         }
 
         output = await cropImage(
@@ -302,9 +302,8 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
           { width: cropPreset.width, height: cropPreset.height, mimeType: outputFormat.mimeType },
         )
       } else if (outputFormat.mimeType !== 'image/jpeg') {
-        const image = new Image()
-        await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = reject; image.src = straightened })
-        output = await cropImage(straightened, { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight }, { mimeType: outputFormat.mimeType })
+        const { width, height } = await getImageDimensions(straightened)
+        output = await cropImage(straightened, { x: 0, y: 0, width, height }, { mimeType: outputFormat.mimeType })
       }
       setPreviewSrc(output)
       setPhase('preview')
@@ -325,17 +324,15 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const acceptPreview = () => {
     if (!previewSrc) return
     if (docId === 'others') {
-      const image = new Image()
-      image.onload = () => {
+      getImageDimensions(previewSrc).then(({ width: naturalWidth, height: naturalHeight }) => {
         const width = 260
         setArrangedImages((items) => {
-          const next = [...items, { id: crypto.randomUUID(), src: previewSrc, x: 32, y: 32, w: width, h: width * image.height / image.width }]
+          const next = [...items, { id: crypto.randomUUID(), src: previewSrc, x: 32, y: 32, w: width, h: width * naturalHeight / naturalWidth }]
           setOtherImages(next)
           return next
         })
         setPhase('arrange')
-      }
-      image.src = previewSrc
+      }).catch(() => toast.error('Could not prepare the image.'))
       return
     }
     setDocSide(docId, currentSide, previewSrc)

@@ -17,6 +17,11 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
+export async function getImageDimensions(src: string): Promise<{ width: number; height: number }> {
+  const image = await loadImage(src)
+  return { width: image.naturalWidth, height: image.naturalHeight }
+}
+
 /**
  * Crop an image (data URL) to the given rectangle expressed in NATURAL pixel
  * coordinates of the source image. Returns a JPEG data URL.
