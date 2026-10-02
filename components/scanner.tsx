@@ -28,9 +28,10 @@ import {
   enhanceImage,
   cropImage,
   getImageDimensions,
+  compressImage,
   type Quad,
 } from '@/lib/image-utils'
-import { buildOthersPdf, downloadSingleDoc, othersPdfFileName } from '@/lib/pdf-utils'
+import { buildOthersPdf, downloadSingleDoc, pdfFileName } from '@/lib/pdf-utils'
 import { DOC_CONFIGS, getDocConfig, type DocId } from '@/lib/types'
 
 type Phase = 'camera' | 'crop' | 'preview' | 'arrange' | 'done'
@@ -354,12 +355,17 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
     setProcessing(true)
     try {
       if (docId === 'image-tools' && previewSrc) {
-        const response = await fetch(previewSrc)
+        const exportSrc = await compressImage(
+          previewSrc,
+          exportSize === 'original' ? null : Number(exportSize.replace('under', '')),
+          outputFormat.mimeType,
+        )
+        const response = await fetch(exportSrc)
         const blob = await response.blob()
         const url = URL.createObjectURL(blob)
         const anchor = document.createElement('a')
         anchor.href = url
-        anchor.download = `${customerName}_Image.${outputFormat.label.toLowerCase()}`
+        anchor.download = `${customerName}_Image.jpg`
         anchor.click()
         URL.revokeObjectURL(url)
       } else if (docId === 'others') {
@@ -367,7 +373,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         const url = URL.createObjectURL(blob)
         const anchor = document.createElement('a')
         anchor.href = url
-        anchor.download = othersPdfFileName(customerName)
+        anchor.download = pdfFileName(customerName, 'others')
         anchor.click()
         URL.revokeObjectURL(url)
       } else {

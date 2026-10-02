@@ -365,6 +365,7 @@ function dataUrlBytes(dataUrl: string): number {
 export async function compressImage(
   src: string,
   maxKB: number | null,
+  mimeType: 'image/jpeg' | 'image/png' = 'image/jpeg',
 ): Promise<string> {
   const img = await loadImage(src)
 
@@ -379,7 +380,7 @@ export async function compressImage(
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, w, h)
     ctx.drawImage(img, 0, 0, w, h)
-    return canvas.toDataURL('image/jpeg', quality)
+    return canvas.toDataURL(mimeType, quality)
   }
 
   if (maxKB === null) {

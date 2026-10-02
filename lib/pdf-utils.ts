@@ -199,11 +199,6 @@ export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSiz
   return new Blob([bytes], { type: 'application/pdf' })
 }
 
-export function othersPdfFileName(customerName: string): string {
-  const safeName = (customerName || 'Customer').replace(/[^\\p{L}\\p{N}_ -]/gu, '').trim() || 'Customer'
-  return `${safeName}_Others Docs.pdf`
-}
-
 export function pdfFileName(customerName: string, id: DocId): string {
   const safeName = (customerName || 'Customer').replace(/[^\p{L}\p{N}_ -]/gu, '').trim() || 'Customer'
   const label = getDocConfig(id).name.split(' ')[0]
@@ -273,7 +268,7 @@ export async function exportAllDocs(
       ? await buildOthersPdf(docs.others.images ?? [], exportSize)
       : await buildDocPdf(config.id, docs[config.id], exportSize)
     built.push({
-      name: config.id === 'others' ? othersPdfFileName(customerName) : pdfFileName(customerName, config.id),
+      name: pdfFileName(customerName, config.id),
       blob,
     })
   }
