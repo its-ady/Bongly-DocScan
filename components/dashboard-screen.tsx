@@ -168,7 +168,7 @@ export function DashboardScreen({
                             'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
                             otherImageCount > 0
                               ? 'bg-accent/10 text-accent'
-                              : 'bg-muted text-muted-foreground',
+                              : 'bg-secondary text-secondary-foreground',
                           )}
                         >
                           {otherImageCount > 0 ? (
