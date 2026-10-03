@@ -201,6 +201,7 @@ export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSiz
 
 export function pdfFileName(customerName: string, id: DocId): string {
   const safeName = (customerName || 'Customer').replace(/[^\p{L}\p{N}_ -]/gu, '').trim() || 'Customer'
+  if (id === 'others') return `${safeName}_Others Docs.pdf`
   const label = getDocConfig(id).name.split(' ')[0]
   return `${safeName}_${label}.pdf`
 }
