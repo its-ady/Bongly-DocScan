@@ -84,6 +84,12 @@ export function maxKBForExportSize(size: ExportSize): number | null {
   return EXPORT_SIZE_OPTIONS.find((option) => option.value === size)?.maxKB ?? null
 }
 
+/** The export ceiling leaves a 2 KB safety margin below the selected setting. */
+export function exportByteLimit(size: ExportSize): number | null {
+  const maxKB = maxKBForExportSize(size)
+  return maxKB === null ? null : Math.max(1, maxKB * 1024 - 2 * 1024)
+}
+
 export function getDocConfig(id: DocId): DocConfig {
   return DOC_CONFIGS.find((d) => d.id === id)!
 }

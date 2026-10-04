@@ -374,88 +374,57 @@ export async function compressImage(
   mimeType: 'image/jpeg' | 'image/png' = 'image/jpeg',
 ): Promise<string> {
   const img = await loadImage(src)
-  const render = (scale: number, quality: number): string => {
-    const w = Math.max(1, Math.round(img.naturalWidth * scale))
-    const h = Math.max(1, Math.round(img.naturalHeight * scale))
+  const render = (quality: number): string => {
     const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
     const ctx = canvas.getContext('2d')!
     ctx.imageSmoothingQuality = 'high'
     ctx.fillStyle = '#fff'
-    ctx.fillRect(0, 0, w, h)
-    ctx.drawImage(img, 0, 0, w, h)
+    ctx.fillRect(0, 0, img.naturalWidth, img.naturalHeight)
+    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight)
     return canvas.toDataURL(mimeType, mimeType === 'image/png' ? undefined : quality)
   }
 
-  if (maxKB === null) return render(1, 1)
+  const original = render(1)
+  if (maxKB === null) return original
 
-  const maxBytes = Math.floor(maxKB * 1024)
-  let smallest: string | null = null
-  let smallestBytes = Number.POSITIVE_INFINITY
-  const remember = (candidate: string) => {
-    const size = dataUrlBytes(candidate)
-    if (size < smallestBytes) {
+  const maxBytes = Math.max(1, Math.floor(maxKB * 1024) - 2 * 1024)
+  const originalBytes = dataUrlBytes(original)
+  if (originalBytes <= maxBytes) return original
+
+  // Keep the requested pixel dimensions unchanged. JPEG quality is the only
+  // adjustable image property; PNG cannot be quality-compressed by canvas.
+  if (mimeType === 'image/png') {
+    throw new Error(
+      `Unable to compress PNG below ${maxKB - 2} KB without changing its pixel dimensions.`,
+    )
+  }
+
+  let lowQuality = 0.01
+  let highQuality = 1
+  let best: string | null = null
+  let smallest = original
+  let smallestBytes = originalBytes
+  for (let attempt = 0; attempt < 18; attempt++) {
+    const quality = (lowQuality + highQuality) / 2
+    const candidate = render(quality)
+    const bytes = dataUrlBytes(candidate)
+    if (bytes < smallestBytes) {
       smallest = candidate
-      smallestBytes = size
+      smallestBytes = bytes
     }
-    return size
-  }
-
-  // Find the largest scale that can fit. PNG has no useful quality parameter,
-  // so resolution is the only reliable way to enforce its final byte limit.
-  let lowScale = 0.01
-  let highScale = 1
-  let accepted: string | null = null
-  for (let attempt = 0; attempt < 14; attempt++) {
-    const scale = (lowScale + highScale) / 2
-    if (mimeType === 'image/png') {
-      const candidate = render(scale, 1)
-      if (remember(candidate) <= maxBytes) {
-        accepted = candidate
-        lowScale = scale
-      } else {
-        highScale = scale
-      }
-      continue
-    }
-
-    // At each scale, maximize JPEG quality while keeping the encoded bytes in
-    // the limit. If even the lowest quality is too large, reduce the scale.
-    let lowQuality = 0.05
-    let highQuality = 1
-    let qualityAccepted: string | null = null
-    for (let qualityAttempt = 0; qualityAttempt < 10; qualityAttempt++) {
-      const quality = (lowQuality + highQuality) / 2
-      const candidate = render(scale, quality)
-      if (remember(candidate) <= maxBytes) {
-        qualityAccepted = candidate
-        lowQuality = quality
-      } else {
-        highQuality = quality
-      }
-    }
-
-    if (qualityAccepted) {
-      accepted = qualityAccepted
-      lowScale = scale
+    if (bytes <= maxBytes) {
+      best = candidate
+      lowQuality = quality
     } else {
-      highScale = scale
+      highQuality = quality
     }
   }
 
-  // Binary search is fast, but encoded PNG/JPEG sizes are not perfectly
-  // monotonic across every browser. Finish with a measured fallback pass so
-  // the exported bytes, not an estimate, are always below the hard limit.
-  if (accepted && dataUrlBytes(accepted) <= maxBytes) return accepted
-
-  for (let step = 1; step <= 20; step++) {
-    const scale = Math.max(0.01, 1 - step / 20)
-    const candidate = render(scale, mimeType === 'image/png' ? 1 : 0.05)
-    if (remember(candidate) <= maxBytes) return candidate
-  }
-
+  if (best && dataUrlBytes(best) <= maxBytes) return best
   throw new Error(
-    `Unable to compress image below ${maxKB} KB (smallest result was ${(smallestBytes / 1024).toFixed(1)} KB).`,
+    `Unable to compress image below ${maxKB} KB without changing its pixel dimensions (smallest result was ${(smallestBytes / 1024).toFixed(1)} KB).`,
   )
+
 }

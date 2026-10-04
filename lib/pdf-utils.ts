@@ -13,6 +13,7 @@ import {
   type DocStore,
   type ExportSize,
   maxKBForExportSize,
+  exportByteLimit,
 } from '@/lib/types'
 
 function maxKBFor(size: ExportSize): number | null {
@@ -133,7 +134,7 @@ export async function buildDocPdf(
 
   if (maxKB === null || numSides === 0) return build(null)
 
-  const maxBytes = maxKB * 1024
+  const maxBytes = exportByteLimit(exportSize)!
   // Reserve space for the PDF container, then verify the complete PDF because
   // jsPDF overhead varies with image dimensions and document metadata.
   let perImageKB = Math.max(2, Math.floor(Math.max(2, maxKB - 16) / numSides))
@@ -147,8 +148,8 @@ export async function buildDocPdf(
     blob = await build(perImageKB)
   }
 
-  if (maxKB !== null && blob.size > maxKB * 1024) {
-    throw new Error(`Unable to create ${getDocConfig(id).name} PDF below ${maxKB} KB.`)
+  if (blob.size > maxBytes) {
+    throw new Error(`Unable to create ${getDocConfig(id).name} PDF below ${Math.max(1, maxKB - 2)} KB.`)
   }
   return blob
 }
@@ -184,7 +185,7 @@ export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSiz
     return new Blob([bytes], { type: 'application/pdf' })
   }
 
-  const maxBytes = maxKB * 1024
+  const maxBytes = exportByteLimit(exportSize)!
   // Leave room for the PDF catalog, page, fonts/metadata, and image objects.
   let perImageKB = Math.max(5, Math.floor((maxKB - 12) / images.length))
   let bytes = await build(perImageKB)
@@ -199,8 +200,8 @@ export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSiz
     bytes = await build(perImageKB)
   }
 
-  if (maxKB !== null && bytes.byteLength > maxKB * 1024) {
-    throw new Error(`Unable to create Others Docs PDF below ${maxKB} KB.`)
+  if (bytes.byteLength > maxBytes) {
+    throw new Error(`Unable to create Others Docs PDF below ${Math.max(1, maxKB - 2)} KB.`)
   }
   return new Blob([bytes], { type: 'application/pdf' })
 }
@@ -268,8 +269,9 @@ export async function exportAllDocs(
       const mimeType = src.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
       const output = await compressImage(src, maxKB, mimeType)
       const blob = await (await fetch(output)).blob()
-      if (maxKB !== null && blob.size > maxKB * 1024) {
-        throw new Error(`Image Tools export exceeded the ${maxKB} KB limit.`)
+      const limit = exportByteLimit(exportSize)
+      if (limit !== null && blob.size > limit) {
+        throw new Error(`Image Tools export must be below ${Math.max(1, maxKB! - 2)} KB.`)
       }
       built.push({ name: imageFileName(customerName, output), blob })
       continue

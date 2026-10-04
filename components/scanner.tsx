@@ -32,7 +32,7 @@ import {
   type Quad,
 } from '@/lib/image-utils'
 import { buildOthersPdf, downloadSingleDoc, pdfFileName } from '@/lib/pdf-utils'
-import { DOC_CONFIGS, getDocConfig, maxKBForExportSize, type DocId } from '@/lib/types'
+import { DOC_CONFIGS, getDocConfig, maxKBForExportSize, exportByteLimit, type DocId } from '@/lib/types'
 
 type Phase = 'camera' | 'crop' | 'preview' | 'arrange' | 'done'
 type CropPreset = { label: string; ratio?: number; width?: number; height?: number }
@@ -359,8 +359,9 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         const exportSrc = await compressImage(previewSrc, maxKB, outputFormat.mimeType)
         const response = await fetch(exportSrc)
         const blob = await response.blob()
-        if (maxKB !== null && blob.size > maxKB * 1024) {
-          throw new Error(`Image export exceeded the ${maxKB} KB limit.`)
+        const limit = exportByteLimit(exportSize)
+        if (limit !== null && blob.size > limit) {
+          throw new Error(`Image export must be below ${Math.max(1, maxKB! - 2)} KB.`)
         }
         const url = URL.createObjectURL(blob)
         const anchor = document.createElement('a')
