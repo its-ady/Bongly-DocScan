@@ -32,7 +32,7 @@ import {
   type Quad,
 } from '@/lib/image-utils'
 import { buildOthersPdf, downloadSingleDoc, pdfFileName } from '@/lib/pdf-utils'
-import { DOC_CONFIGS, getDocConfig, type DocId } from '@/lib/types'
+import { DOC_CONFIGS, getDocConfig, maxKBForExportSize, type DocId } from '@/lib/types'
 
 type Phase = 'camera' | 'crop' | 'preview' | 'arrange' | 'done'
 type CropPreset = { label: string; ratio?: number; width?: number; height?: number }
@@ -355,17 +355,17 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
     setProcessing(true)
     try {
       if (docId === 'image-tools' && previewSrc) {
-        const exportSrc = await compressImage(
-          previewSrc,
-          exportSize === 'original' ? null : Number(exportSize.replace('under', '')),
-          outputFormat.mimeType,
-        )
+        const maxKB = maxKBForExportSize(exportSize)
+        const exportSrc = await compressImage(previewSrc, maxKB, outputFormat.mimeType)
         const response = await fetch(exportSrc)
         const blob = await response.blob()
+        if (maxKB !== null && blob.size > maxKB * 1024) {
+          throw new Error(`Image export exceeded the ${maxKB} KB limit.`)
+        }
         const url = URL.createObjectURL(blob)
         const anchor = document.createElement('a')
         anchor.href = url
-        anchor.download = `${customerName}_Image.jpg`
+        anchor.download = `${customerName}_Image.${outputFormat.mimeType === 'image/png' ? 'png' : 'jpg'}`
         anchor.click()
         URL.revokeObjectURL(url)
       } else if (docId === 'others') {

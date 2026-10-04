@@ -80,6 +80,10 @@ export const EXPORT_SIZE_OPTIONS: { value: ExportSize; label: string; maxKB: num
   { value: 'under50', label: 'Under 50 KB', maxKB: 50 },
 ]
 
+export function maxKBForExportSize(size: ExportSize): number | null {
+  return EXPORT_SIZE_OPTIONS.find((option) => option.value === size)?.maxKB ?? null
+}
+
 export function getDocConfig(id: DocId): DocConfig {
   return DOC_CONFIGS.find((d) => d.id === id)!
 }

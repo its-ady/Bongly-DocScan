@@ -12,11 +12,11 @@ import {
   type DocId,
   type DocStore,
   type ExportSize,
+  maxKBForExportSize,
 } from '@/lib/types'
-import { EXPORT_SIZE_OPTIONS } from '@/lib/types'
 
 function maxKBFor(size: ExportSize): number | null {
-  return EXPORT_SIZE_OPTIONS.find((o) => o.value === size)?.maxKB ?? null
+  return maxKBForExportSize(size)
 }
 
 function imageDims(src: string): Promise<{ w: number; h: number }> {
@@ -147,6 +147,9 @@ export async function buildDocPdf(
     blob = await build(perImageKB)
   }
 
+  if (maxKB !== null && blob.size > maxKB * 1024) {
+    throw new Error(`Unable to create ${getDocConfig(id).name} PDF below ${maxKB} KB.`)
+  }
   return blob
 }
 
@@ -196,6 +199,9 @@ export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSiz
     bytes = await build(perImageKB)
   }
 
+  if (maxKB !== null && bytes.byteLength > maxKB * 1024) {
+    throw new Error(`Unable to create Others Docs PDF below ${maxKB} KB.`)
+  }
   return new Blob([bytes], { type: 'application/pdf' })
 }
 
@@ -259,9 +265,13 @@ export async function exportAllDocs(
       // both keys so the dashboard and export stay in sync after navigation.
       const src = docs['image-tools'].front ?? docs['image-tools'].back
       if (!src) continue
-      const output = maxKB === null ? src : await compressImage(src, maxKB)
-      const response = await fetch(output)
-      built.push({ name: imageFileName(customerName, output), blob: await response.blob() })
+      const mimeType = src.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
+      const output = await compressImage(src, maxKB, mimeType)
+      const blob = await (await fetch(output)).blob()
+      if (maxKB !== null && blob.size > maxKB * 1024) {
+        throw new Error(`Image Tools export exceeded the ${maxKB} KB limit.`)
+      }
+      built.push({ name: imageFileName(customerName, output), blob })
       continue
     }
 

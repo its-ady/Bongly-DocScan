@@ -352,23 +352,24 @@ export async function warpPerspective(
 
 function dataUrlBytes(dataUrl: string): number {
   const base64 = dataUrl.split(',')[1] || ''
-  // base64 length to bytes
   const padding = (base64.match(/=+$/) || [''])[0].length
   return Math.floor((base64.length * 3) / 4) - padding
 }
 
-/**
- * Compress an image (data URL) so its size is at or below maxKB.
- * Reduces JPEG quality first, then scales dimensions down if needed.
- * Returns a JPEG data URL. If maxKB is null, re-encodes at high quality.
- */
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, encoded] = dataUrl.split(',')
+  const mimeType = header.match(/data:([^;]+)/)?.[1] ?? 'application/octet-stream'
+  const bytes = Uint8Array.from(atob(encoded ?? ''), (character) => character.charCodeAt(0))
+  return new Blob([bytes], { type: mimeType })
+}
+
+/** Encode an image and enforce the selected limit on the final data URL. */
 export async function compressImage(
   src: string,
   maxKB: number | null,
   mimeType: 'image/jpeg' | 'image/png' = 'image/jpeg',
 ): Promise<string> {
   const img = await loadImage(src)
-
   const render = (scale: number, quality: number): string => {
     const w = Math.max(1, Math.round(img.naturalWidth * scale))
     const h = Math.max(1, Math.round(img.naturalHeight * scale))
@@ -377,72 +378,51 @@ export async function compressImage(
     canvas.height = h
     const ctx = canvas.getContext('2d')!
     ctx.imageSmoothingQuality = 'high'
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = '#fff'
     ctx.fillRect(0, 0, w, h)
     ctx.drawImage(img, 0, 0, w, h)
-    return canvas.toDataURL(mimeType, quality)
+    return canvas.toDataURL(mimeType, mimeType === 'image/png' ? undefined : quality)
   }
 
-  if (maxKB === null) {
-    return render(1, 1.0)
-  }
-
-  const maxBytes = maxKB * 1024
-  let bestResult = render(0.3, 0.05) // Extreme fallback
-  let bestSize = dataUrlBytes(bestResult)
-
-  // Phase 1: Try quality reduction at full scale (finest granularity at full resolution)
-  for (const q of [
-    0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2,
-    0.15, 0.1, 0.08, 0.06, 0.05,
-  ]) {
-    const out = render(1, q)
-    const size = dataUrlBytes(out)
-    if (size <= maxBytes) {
-      console.log(`[v0] Compressed to ${(size / 1024).toFixed(2)}KB at scale=1.0 quality=${q}`)
-      return out
+  if (maxKB === null) return render(1, 1)
+  const maxBytes = Math.floor(maxKB * 1024)
+  let smallest = render(0.01, 0.01)
+  let smallestBytes = dataUrlBytes(smallest)
+  const remember = (candidate: string) => {
+    const size = dataUrlBytes(candidate)
+    if (size < smallestBytes) {
+      smallest = candidate
+      smallestBytes = size
     }
-    if (size < bestSize) {
-      bestResult = out
-      bestSize = size
-    }
+    return size
   }
 
-  // Phase 2: Scale down aggressively, testing each scale with multiple qualities
-  let scale = 0.9
-  while (scale > 0.1) {
-    for (const q of [0.75, 0.6, 0.45, 0.3, 0.15, 0.08]) {
-      const out = render(scale, q)
-      const size = dataUrlBytes(out)
-      if (size <= maxBytes) {
-        console.log(
-          `[v0] Compressed to ${(size / 1024).toFixed(2)}KB at scale=${scale.toFixed(2)} quality=${q}`,
-        )
-        return out
-      }
-      if (size < bestSize) {
-        bestResult = out
-        bestSize = size
+  const scales = mimeType === 'image/png'
+    ? Array.from({ length: 100 }, (_, index) => 1 - index * 0.01)
+    : [1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.075, 0.05, 0.025, 0.01]
+
+  for (const scale of scales) {
+    if (mimeType === 'image/png') {
+      const candidate = render(scale, 1)
+      if (remember(candidate) <= maxBytes) return candidate
+      continue
+    }
+
+    let low = 0.05
+    let high = 1
+    let accepted: string | null = null
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const quality = (low + high) / 2
+      const candidate = render(scale, quality)
+      if (remember(candidate) <= maxBytes) {
+        accepted = candidate
+        low = quality
+      } else {
+        high = quality
       }
     }
-    scale *= 0.8
+    if (accepted) return accepted
   }
 
-  // Phase 3: Final extreme scaling
-  for (let scale = 0.1; scale >= 0.05; scale -= 0.01) {
-    const out = render(scale, 0.1)
-    const size = dataUrlBytes(out)
-    if (size <= maxBytes) {
-      console.log(`[v0] Compressed to ${(size / 1024).toFixed(2)}KB at scale=${scale.toFixed(2)} quality=0.1`)
-      return out
-    }
-    if (size < bestSize) {
-      bestResult = out
-      bestSize = size
-    }
-  }
-
-  // Final fallback: return the smallest we could produce
-  console.log(`[v0] Fallback: ${(bestSize / 1024).toFixed(2)}KB (target was ${maxKB}KB)`)
-  return bestResult
+  throw new Error(`Unable to compress image below ${maxKB} KB (smallest result was ${(smallestBytes / 1024).toFixed(1)} KB).`)
 }
