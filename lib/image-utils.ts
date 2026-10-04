@@ -444,7 +444,17 @@ export async function compressImage(
     }
   }
 
+  // Binary search is fast, but encoded PNG/JPEG sizes are not perfectly
+  // monotonic across every browser. Finish with a measured fallback pass so
+  // the exported bytes, not an estimate, are always below the hard limit.
   if (accepted && dataUrlBytes(accepted) <= maxBytes) return accepted
+
+  for (let step = 1; step <= 20; step++) {
+    const scale = Math.max(0.01, 1 - step / 20)
+    const candidate = render(scale, mimeType === 'image/png' ? 1 : 0.05)
+    if (remember(candidate) <= maxBytes) return candidate
+  }
+
   throw new Error(
     `Unable to compress image below ${maxKB} KB (smallest result was ${(smallestBytes / 1024).toFixed(1)} KB).`,
   )
