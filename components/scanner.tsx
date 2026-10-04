@@ -380,8 +380,9 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         await downloadSingleDoc(customerName, docId, docs[docId], exportSize)
       }
       toast.success(docId === 'image-tools' ? `${config.name} image saved.` : `${config.name} PDF saved.`)
-    } catch {
-      toast.error('Could not generate the PDF.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not generate the export.'
+      toast.error(message)
     } finally {
       setProcessing(false)
     }
