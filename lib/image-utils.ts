@@ -372,59 +372,55 @@ export async function compressImage(
   src: string,
   maxKB: number | null,
   mimeType: 'image/jpeg' | 'image/png' = 'image/jpeg',
+  preserveDimensions = false,
 ): Promise<string> {
   const img = await loadImage(src)
-  const render = (quality: number): string => {
+  const render = (scale: number, quality: number): string => {
     const canvas = document.createElement('canvas')
-    canvas.width = img.naturalWidth
-    canvas.height = img.naturalHeight
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
     const ctx = canvas.getContext('2d')!
     ctx.imageSmoothingQuality = 'high'
     ctx.fillStyle = '#fff'
-    ctx.fillRect(0, 0, img.naturalWidth, img.naturalHeight)
-    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight)
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
     return canvas.toDataURL(mimeType, mimeType === 'image/png' ? undefined : quality)
   }
 
-  const original = render(1)
+  const original = render(1, 1)
   if (maxKB === null) return original
 
-  const maxBytes = Math.max(1, Math.floor(maxKB * 1024) - 2 * 1024)
+  const maxBytes = Math.max(1, Math.floor(maxKB * 1000) - 2000)
   const originalBytes = dataUrlBytes(original)
   if (originalBytes <= maxBytes) return original
 
-  // Keep the requested pixel dimensions unchanged. JPEG quality is the only
-  // adjustable image property; PNG cannot be quality-compressed by canvas.
   if (mimeType === 'image/png') {
-    throw new Error(
-      `Unable to compress PNG below ${maxKB - 2} KB without changing its pixel dimensions.`,
-    )
+    throw new Error(`Unable to compress PNG below ${maxKB - 2} KB.`)
   }
 
-  let lowQuality = 0.01
-  let highQuality = 1
-  let best: string | null = null
+  let scale = 1
   let smallest = original
   let smallestBytes = originalBytes
-  for (let attempt = 0; attempt < 18; attempt++) {
-    const quality = (lowQuality + highQuality) / 2
-    const candidate = render(quality)
-    const bytes = dataUrlBytes(candidate)
-    if (bytes < smallestBytes) {
-      smallest = candidate
-      smallestBytes = bytes
+  while (true) {
+    // Preserve dimensions for Image Tools presets; PDF images may scale after
+    // the JPEG quality floor is reached because PDF layout controls mm size.
+    const qualitySteps = [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.45]
+    for (const quality of qualitySteps) {
+      const candidate = render(scale, quality)
+      const bytes = dataUrlBytes(candidate)
+      if (bytes < smallestBytes) {
+        smallest = candidate
+        smallestBytes = bytes
+      }
+      if (bytes <= maxBytes) return candidate
     }
-    if (bytes <= maxBytes) {
-      best = candidate
-      lowQuality = quality
-    } else {
-      highQuality = quality
-    }
+    if (preserveDimensions) break
+    scale *= 0.9
+    if (scale < 0.01) break
   }
 
-  if (best && dataUrlBytes(best) <= maxBytes) return best
   throw new Error(
-    `Unable to compress image below ${maxKB} KB without changing its pixel dimensions (smallest result was ${(smallestBytes / 1024).toFixed(1)} KB).`,
+    `Unable to compress image below ${maxKB - 2} KB${preserveDimensions ? ' without changing its pixel dimensions' : ''} (smallest result was ${(smallestBytes / 1000).toFixed(1)} KB).`,
   )
 
 }

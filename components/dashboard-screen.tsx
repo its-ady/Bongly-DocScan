@@ -56,6 +56,8 @@ export function DashboardScreen({
     setExporting(true)
     try {
       const result = await exportAllDocs(customerName, docs, exportSize)
+      for (const notice of result.notices) toast.message(notice)
+      for (const failure of result.failures) toast.error(failure, { duration: 6000 })
       if (result.method === 'folder') {
         toast.success(`Saved ${result.count} file(s) to the chosen folder.`, {
           duration: 2000,
@@ -69,7 +71,8 @@ export function DashboardScreen({
       if ((err as DOMException)?.name === 'AbortError') {
         toast.message('Export cancelled.')
       } else {
-        toast.error('Export failed. Please try again.')
+        const message = err instanceof Error ? err.message : 'Export failed.'
+        toast.error(message)
       }
     } finally {
       setExporting(false)

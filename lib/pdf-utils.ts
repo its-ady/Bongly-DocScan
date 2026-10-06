@@ -243,6 +243,8 @@ export async function downloadSingleDoc(
 interface ExportResult {
   count: number
   method: 'folder' | 'downloads'
+  failures: string[]
+  notices: string[]
 }
 
 /**
@@ -260,14 +262,26 @@ export async function exportAllDocs(
 
   // Build all files first so PDFs and Image Tools output are exported together.
   const built: { name: string; blob: Blob }[] = []
+  const failures: string[] = []
+  const notices: string[] = []
   for (const config of completed) {
+    try {
     if (config.id === 'image-tools') {
       // Older sessions may have stored the single image under `back`; accept
       // both keys so the dashboard and export stay in sync after navigation.
       const src = docs['image-tools'].front ?? docs['image-tools'].back
       if (!src) continue
       const mimeType = src.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
-      const output = await compressImage(src, maxKB, mimeType)
+      let output: string
+      let usedJpegFallback = false
+      try {
+        output = await compressImage(src, maxKB, mimeType)
+      } catch (error) {
+        if (mimeType !== 'image/png') throw error
+        output = await compressImage(src, maxKB, 'image/jpeg')
+        usedJpegFallback = true
+        notices.push('PNG এই সাইজে হয় না, JPG সেভ হয়েছে')
+      }
       const blob = await (await fetch(output)).blob()
       const limit = exportByteLimit(exportSize)
       if (limit !== null && blob.size > limit) {
@@ -284,6 +298,11 @@ export async function exportAllDocs(
       name: pdfFileName(customerName, config.id),
       blob,
     })
+    } catch (error) {
+      const name = config.name
+      const message = error instanceof Error ? error.message : 'Unknown export error.'
+      failures.push(`${name}: ${message}`)
+    }
   }
 
   // Attempt folder export via File System Access API.
@@ -309,7 +328,7 @@ export async function exportAllDocs(
         await writable.write(item.blob)
         await writable.close()
       }
-      return { count: built.length, method: 'folder' }
+      return { count: built.length, method: 'folder', failures, notices }
     } catch (err) {
       // User cancelled or write failed -> fall through to downloads.
       if ((err as DOMException)?.name === 'AbortError') {
@@ -324,5 +343,5 @@ export async function exportAllDocs(
     await new Promise((r) => setTimeout(r, i === 0 ? 0 : 400))
     triggerDownload(item.blob, item.name)
   }
-  return { count: built.length, method: 'downloads' }
+  return { count: built.length, method: 'downloads', failures, notices }
 }

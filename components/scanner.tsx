@@ -356,7 +356,15 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
     try {
       if (docId === 'image-tools' && previewSrc) {
         const maxKB = maxKBForExportSize(exportSize)
-        const exportSrc = await compressImage(previewSrc, maxKB, outputFormat.mimeType)
+        let usedJpegFallback = false
+        let exportSrc: string
+        try {
+          exportSrc = await compressImage(previewSrc, maxKB, outputFormat.mimeType, true)
+        } catch (error) {
+          if (outputFormat.mimeType !== 'image/png') throw error
+          exportSrc = await compressImage(previewSrc, maxKB, 'image/jpeg', true)
+          usedJpegFallback = true
+        }
         const response = await fetch(exportSrc)
         const blob = await response.blob()
         const limit = exportByteLimit(exportSize)
@@ -369,6 +377,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         anchor.download = `${customerName}_Image.${outputFormat.mimeType === 'image/png' ? 'png' : 'jpg'}`
         anchor.click()
         URL.revokeObjectURL(url)
+        if (usedJpegFallback) toast.message('PNG এই সাইজে হয় না, JPG সেভ হয়েছে')
       } else if (docId === 'others') {
         const blob = await buildOthersPdf(arrangedImages, exportSize)
         const url = URL.createObjectURL(blob)
