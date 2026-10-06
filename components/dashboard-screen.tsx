@@ -59,7 +59,6 @@ export function DashboardScreen({
       for (const notice of result.notices) toast.message(notice)
       for (const failure of result.failures) toast.error(failure, { duration: 6000 })
       if (result.count === 0) {
-        for (const failure of result.failures) toast.error(failure, { duration: 6000 })
         return
       }
       if (result.method === 'folder') {
