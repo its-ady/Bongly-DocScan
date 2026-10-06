@@ -374,7 +374,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         const url = URL.createObjectURL(blob)
         const anchor = document.createElement('a')
         anchor.href = url
-        anchor.download = `${customerName}_Image.${outputFormat.mimeType === 'image/png' ? 'png' : 'jpg'}`
+        anchor.download = `${customerName}_Image.${exportSrc.startsWith('data:image/png') ? 'png' : 'jpg'}`
         anchor.click()
         URL.revokeObjectURL(url)
         if (usedJpegFallback) toast.message('PNG এই সাইজে হয় না, JPG সেভ হয়েছে')

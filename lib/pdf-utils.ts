@@ -273,13 +273,11 @@ export async function exportAllDocs(
       if (!src) continue
       const mimeType = src.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
       let output: string
-      let usedJpegFallback = false
-      try {
-        output = await compressImage(src, maxKB, mimeType)
+          try {
+        output = await compressImage(src, maxKB, mimeType, true)
       } catch (error) {
         if (mimeType !== 'image/png') throw error
-        output = await compressImage(src, maxKB, 'image/jpeg')
-        usedJpegFallback = true
+        output = await compressImage(src, maxKB, 'image/jpeg', true)
         notices.push('PNG এই সাইজে হয় না, JPG সেভ হয়েছে')
       }
       const blob = await (await fetch(output)).blob()
@@ -303,6 +301,10 @@ export async function exportAllDocs(
       const message = error instanceof Error ? error.message : 'Unknown export error.'
       failures.push(`${name}: ${message}`)
     }
+  }
+
+  if (built.length === 0) {
+    return { count: 0, method: 'downloads', failures, notices }
   }
 
   // Attempt folder export via File System Access API.
