@@ -368,6 +368,24 @@ export function dataUrlToBlob(dataUrl: string): Blob {
  * The limit is a hard ceiling: the returned data URL is always measured after
  * encoding, not estimated from the source image or canvas dimensions.
  */
+export async function limitImageSize(src: string, maxSide = 3000): Promise<string> {
+  const { width, height } = await getImageDimensions(src)
+  const longest = Math.max(width, height)
+  if (longest <= maxSide) return src
+  const scale = maxSide / longest
+  const img = new Image()
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve()
+    img.onerror = () => reject(new Error('Image load failed'))
+    img.src = src
+  })
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(width * scale)
+  canvas.height = Math.round(height * scale)
+  canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/jpeg', 0.95)
+}
+
 export async function compressImage(
   src: string,
   maxKB: number | null,

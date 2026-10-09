@@ -206,20 +206,24 @@ export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSiz
   return new Blob([bytes], { type: 'application/pdf' })
 }
 
+export function safeFileName(name: string): string {
+  return (name || 'Customer').replace(/[^\p{L}\p{M}\p{N}_ -]/gu, '').trim() || 'Customer'
+}
+
 export function pdfFileName(customerName: string, id: DocId): string {
-  const safeName = (customerName || 'Customer').replace(/[^\p{L}\p{N}_ -]/gu, '').trim() || 'Customer'
+  const safeName = safeFileName(customerName)
   if (id === 'others') return `${safeName}_Others Docs.pdf`
   const label = getDocConfig(id).name.split(' ')[0]
   return `${safeName}_${label}.pdf`
 }
 
 function imageFileName(customerName: string, src: string): string {
-  const safeName = (customerName || 'Customer').replace(/[^\p{L}\p{N}_ -]/gu, '').trim() || 'Customer'
+  const safeName = safeFileName(customerName)
   const extension = src.startsWith('data:image/png') ? 'png' : 'jpg'
   return `${safeName}_Image.${extension}`
 }
 
-function triggerDownload(blob: Blob, filename: string) {
+export function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -315,9 +319,7 @@ export async function exportAllDocs(
   if (typeof picker === 'function') {
     try {
       const dirHandle = await picker.call(window)
-      const safeFolder =
-        (customerName || 'Customer').replace(/[^\p{L}\p{N}_ -]/gu, '').trim() ||
-        'Customer'
+      const safeFolder = safeFileName(customerName)
       let target: FileSystemDirectoryHandle = dirHandle
       try {
         target = await dirHandle.getDirectoryHandle(safeFolder, { create: true })

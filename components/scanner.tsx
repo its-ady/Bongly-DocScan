@@ -29,9 +29,10 @@ import {
   cropImage,
   getImageDimensions,
   compressImage,
+  limitImageSize,
   type Quad,
 } from '@/lib/image-utils'
-import { buildOthersPdf, downloadSingleDoc, pdfFileName } from '@/lib/pdf-utils'
+import { buildOthersPdf, downloadSingleDoc, pdfFileName, safeFileName, triggerDownload } from '@/lib/pdf-utils'
 import { DOC_CONFIGS, getDocConfig, maxKBForExportSize, exportByteLimit, type DocId } from '@/lib/types'
 
 type Phase = 'camera' | 'crop' | 'preview' | 'arrange' | 'done'
@@ -244,29 +245,28 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   }
 
   const handleGallerySelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+    const input = event.target
+    const file = input.files?.[0]
     if (!file) return
-    
     setProcessing(true)
     try {
-      const reader = new FileReader()
-      reader.onload = async (e) => {
-        const src = e.target?.result as string
-        setCapturedSrc(src)
-        const detected = await detectDocumentQuad(src)
-        setCropQuad(detected)
-        liveQuadRef.current = detected
-        setPhase('crop')
-        setProcessing(false)
-      }
-      reader.readAsDataURL(file)
+      const raw = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = () => reject(reader.error)
+        reader.readAsDataURL(file)
+      })
+      const src = await limitImageSize(raw, 3000)
+      setCapturedSrc(src)
+      const detected = await detectDocumentQuad(src)
+      setCropQuad(detected)
+      liveQuadRef.current = detected
+      setPhase('crop')
     } catch {
       toast.error('Could not load the image.')
+    } finally {
       setProcessing(false)
-    }
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      input.value = ''
     }
   }
 
@@ -371,21 +371,11 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         if (limit !== null && blob.size > limit) {
           throw new Error(`Image export must be below ${Math.max(1, maxKB! - 2)} KB.`)
         }
-        const url = URL.createObjectURL(blob)
-        const anchor = document.createElement('a')
-        anchor.href = url
-        anchor.download = `${customerName}_Image.${exportSrc.startsWith('data:image/png') ? 'png' : 'jpg'}`
-        anchor.click()
-        URL.revokeObjectURL(url)
+        triggerDownload(blob, `${safeFileName(customerName)}_Image.${exportSrc.startsWith('data:image/png') ? 'png' : 'jpg'}`)
         if (usedJpegFallback) toast.message('PNG এই সাইজে হয় না, JPG সেভ হয়েছে')
       } else if (docId === 'others') {
         const blob = await buildOthersPdf(arrangedImages, exportSize)
-        const url = URL.createObjectURL(blob)
-        const anchor = document.createElement('a')
-        anchor.href = url
-        anchor.download = pdfFileName(customerName, 'others')
-        anchor.click()
-        URL.revokeObjectURL(url)
+        triggerDownload(blob, pdfFileName(customerName, 'others'))
       } else {
         await downloadSingleDoc(customerName, docId, docs[docId], exportSize)
       }
