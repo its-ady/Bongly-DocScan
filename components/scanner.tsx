@@ -108,8 +108,8 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   // Reset everything when the document changes (Scan Next Document).
   useEffect(() => {
     setSideIndex(0)
-    setPhase('camera')
-    setCapturedSrc(null)
+  setPhase(docId === 'others' && (docs.others.images ?? []).length > 0 ? 'arrange' : 'camera')
+  setCapturedSrc(null)
     setEnhancedSrc(null)
     setEnhanced(false)
     setCropQuad(null)
@@ -529,10 +529,8 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         {phase === 'arrange' && (
           <ArrangeEditor
             images={arrangedImages}
-            onChange={(next) => {
-              setArrangedImages(next)
-              setOtherImages(next)
-            }}
+            onChange={(next) => setArrangedImages(next)}
+            onCommit={(next) => setOtherImages(next)}
             onAddPhoto={() => { setCapturedSrc(null); setPreviewSrc(null); setPhase('camera') }}
             onConvert={() => setPhase('done')}
           />

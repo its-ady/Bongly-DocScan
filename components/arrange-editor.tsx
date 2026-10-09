@@ -21,11 +21,13 @@ export function ArrangeEditor({
   onChange,
   onAddPhoto,
   onConvert,
+  onCommit,
 }: {
   images: PlacedImage[]
   onChange: (images: PlacedImage[]) => void
   onAddPhoto: () => void
   onConvert: () => void
+  onCommit: (images: PlacedImage[]) => void
 }) {
   const pageRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ id: string; mode: 'move' | 'resize'; sx: number; sy: number; item: PlacedImage } | null>(null)
@@ -53,8 +55,9 @@ export function ArrangeEditor({
         return { ...item, x: Math.max(0, Math.min(PAGE_W - item.w, drag.item.x + dx)), y: Math.max(0, Math.min(PAGE_H - item.h, drag.item.y + dy)) }
       }
       const ratio = drag.item.w / drag.item.h
-      const w = Math.max(48, Math.min(PAGE_W - drag.item.x, drag.item.w + dx))
-      const h = Math.min(PAGE_H - drag.item.y, w / ratio)
+      const maxW = Math.min(PAGE_W - drag.item.x, (PAGE_H - drag.item.y) * ratio)
+      const w = Math.min(maxW, Math.max(48, drag.item.w + dx))
+      const h = w / ratio
       return { ...item, w, h }
     })
     onChange(next)
@@ -67,18 +70,22 @@ export function ArrangeEditor({
     const cellW = (PAGE_W - padding * 2 - gap * (columns - 1)) / columns
     const rows = Math.ceil(images.length / columns)
     const cellH = (PAGE_H - padding * 2 - gap * (rows - 1)) / rows
-    onChange(images.map((item, index) => {
+    const next = images.map((item, index) => {
       const ratio = item.w / item.h
       let w = cellW
       let h = w / ratio
       if (h > cellH) { h = cellH; w = h * ratio }
       return { ...item, w, h, x: padding + (index % columns) * (cellW + gap) + (cellW - w) / 2, y: padding + Math.floor(index / columns) * (cellH + gap) + (cellH - h) / 2 }
-    }))
+    })
+    onChange(next)
+    onCommit(next)
   }
 
   const removeSelected = () => {
     if (!selected) return
-    onChange(images.filter((item) => item.id !== selected))
+    const next = images.filter((item) => item.id !== selected)
+    onChange(next)
+    onCommit(next)
     setSelected(null)
   }
 
@@ -92,10 +99,10 @@ export function ArrangeEditor({
         <Button size="sm" variant="outline" onClick={onAddPhoto}><Plus data-icon="inline-start" />Add Photo</Button>
         <Button size="sm" variant="outline" onClick={autoGrid}><WandSparkles data-icon="inline-start" />Auto Grid</Button>
         {selected && <Button size="sm" variant="outline" onClick={removeSelected}><Trash2 data-icon="inline-start" />Delete</Button>}
-        <Button size="sm" variant="ghost" onClick={() => { onChange([]); setSelected(null) }}><X data-icon="inline-start" />Clear All</Button>
+        <Button size="sm" variant="ghost" onClick={() => { onChange([]); onCommit([]); setSelected(null) }}><X data-icon="inline-start" />Clear All</Button>
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
-        <div ref={pageRef} className="relative aspect-[595/842] w-full max-w-[595px] bg-white shadow-xl" onPointerMove={updateDrag} onPointerUp={() => { dragRef.current = null }} onPointerCancel={() => { dragRef.current = null }}>
+        <div ref={pageRef} className="relative aspect-[595/842] w-full max-w-[595px] bg-white shadow-xl" onPointerMove={updateDrag} onPointerUp={() => { if (dragRef.current) onCommit(images); dragRef.current = null }} onPointerCancel={() => { if (dragRef.current) onCommit(images); dragRef.current = null }}>
           {images.map((item) => (
             <div key={item.id} className={`absolute touch-none select-none ${selected === item.id ? 'ring-2 ring-primary ring-offset-2' : 'ring-1 ring-black/10'}`} style={{ left: item.x * scale, top: item.y * scale, width: item.w * scale, height: item.h * scale }} onPointerDown={(event) => { event.stopPropagation(); setSelected(item.id); dragRef.current = { id: item.id, mode: 'move', sx: event.clientX, sy: event.clientY, item } }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}<img src={item.src} alt="Placed document" className="h-full w-full object-fill" draggable={false} />
