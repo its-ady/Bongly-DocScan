@@ -17,15 +17,22 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
+export async function getImageDimensions(src: string): Promise<{ width: number; height: number }> {
+  const image = await loadImage(src)
+  return { width: image.naturalWidth, height: image.naturalHeight }
+}
+
 /**
  * Crop an image (data URL) to the given rectangle expressed in NATURAL pixel
  * coordinates of the source image. Returns a JPEG data URL.
  */
-export async function cropImage(src: string, rect: CropRect): Promise<string> {
+export async function cropImage(src: string, rect: CropRect, options?: { width?: number; height?: number; mimeType?: 'image/jpeg' | 'image/png' | 'image/webp'; quality?: number }): Promise<string> {
   const img = await loadImage(src)
   const canvas = document.createElement('canvas')
-  const w = Math.max(1, Math.round(rect.width))
-  const h = Math.max(1, Math.round(rect.height))
+  const sourceW = Math.max(1, Math.round(rect.width))
+  const sourceH = Math.max(1, Math.round(rect.height))
+  const w = options?.width ?? sourceW
+  const h = options?.height ?? sourceH
   canvas.width = w
   canvas.height = h
   const ctx = canvas.getContext('2d')!
@@ -34,14 +41,14 @@ export async function cropImage(src: string, rect: CropRect): Promise<string> {
     img,
     Math.round(rect.x),
     Math.round(rect.y),
-    w,
-    h,
+    sourceW,
+    sourceH,
     0,
     0,
     w,
     h,
   )
-  return canvas.toDataURL('image/jpeg', 0.95)
+  return canvas.toDataURL(options?.mimeType ?? 'image/jpeg', options?.quality ?? 1.0)
 }
 
 /**
@@ -157,7 +164,7 @@ export async function rotateImage90(src: string): Promise<string> {
   ctx.translate(h, 0)
   ctx.rotate(Math.PI / 2)
   ctx.drawImage(img, 0, 0)
-  return canvas.toDataURL('image/jpeg', 0.95)
+  return canvas.toDataURL('image/jpeg', 1.0)
 }
 
 /**
@@ -176,7 +183,7 @@ export async function enhanceImage(src: string): Promise<string> {
   // CSS-style filters give a good, cheap clean-up effect for ID photos.
   ctx.filter = 'contrast(1.25) brightness(1.08) saturate(1.15)'
   ctx.drawImage(img, 0, 0)
-  return canvas.toDataURL('image/jpeg', 0.95)
+  return canvas.toDataURL('image/jpeg', 1.0)
 }
 
 // ---------------------------------------------------------------------------
@@ -315,21 +322,21 @@ export async function warpPerspective(
       const fx = (H[0] * u + H[1] * v + H[2]) / denom
       const fy = (H[3] * u + H[4] * v + H[5]) / denom
       const oi = (v * outW + u) * 4
-      if (fx < 0 || fy < 0 || fx >= sw - 1 || fy >= sh - 1) {
-        op[oi] = 255
-        op[oi + 1] = 255
-        op[oi + 2] = 255
-        op[oi + 3] = 255
-        continue
-      }
-      const x0 = Math.floor(fx)
-      const y0 = Math.floor(fy)
-      const dx = fx - x0
-      const dy = fy - y0
+      // Clamp edge samples to the source image instead of painting out-of-bounds
+      // pixels white. The old boundary check created a visible white strip when
+      // the selected quad reached the right or bottom edge of the photo.
+      const safeFx = Math.min(sw - 1, Math.max(0, fx))
+      const safeFy = Math.min(sh - 1, Math.max(0, fy))
+      const x0 = Math.floor(safeFx)
+      const y0 = Math.floor(safeFy)
+      const x1 = Math.min(sw - 1, x0 + 1)
+      const y1 = Math.min(sh - 1, y0 + 1)
+      const dx = safeFx - x0
+      const dy = safeFy - y0
       const i00 = (y0 * sw + x0) * 4
-      const i10 = i00 + 4
-      const i01 = i00 + sw * 4
-      const i11 = i01 + 4
+      const i10 = (y0 * sw + x1) * 4
+      const i01 = (y1 * sw + x0) * 4
+      const i11 = (y1 * sw + x1) * 4
       for (let c = 0; c < 3; c++) {
         const top = sdata[i00 + c] * (1 - dx) + sdata[i10 + c] * dx
         const bot = sdata[i01 + c] * (1 - dx) + sdata[i11 + c] * dx
@@ -345,96 +352,93 @@ export async function warpPerspective(
 
 function dataUrlBytes(dataUrl: string): number {
   const base64 = dataUrl.split(',')[1] || ''
-  // base64 length to bytes
   const padding = (base64.match(/=+$/) || [''])[0].length
   return Math.floor((base64.length * 3) / 4) - padding
 }
 
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, encoded] = dataUrl.split(',')
+  const mimeType = header.match(/data:([^;]+)/)?.[1] ?? 'application/octet-stream'
+  const bytes = Uint8Array.from(atob(encoded ?? ''), (character) => character.charCodeAt(0))
+  return new Blob([bytes], { type: mimeType })
+}
+
 /**
- * Compress an image (data URL) so its size is at or below maxKB.
- * Reduces JPEG quality first, then scales dimensions down if needed.
- * Returns a JPEG data URL. If maxKB is null, re-encodes at high quality.
+ * Encode an image and enforce the selected limit on the final encoded bytes.
+ * The limit is a hard ceiling: the returned data URL is always measured after
+ * encoding, not estimated from the source image or canvas dimensions.
  */
+export async function limitImageSize(src: string, maxSide = 3000): Promise<string> {
+  const { width, height } = await getImageDimensions(src)
+  const longest = Math.max(width, height)
+  if (longest <= maxSide) return src
+  const scale = maxSide / longest
+  const img = new Image()
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve()
+    img.onerror = () => reject(new Error('Image load failed'))
+    img.src = src
+  })
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(width * scale)
+  canvas.height = Math.round(height * scale)
+  canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/jpeg', 0.95)
+}
+
 export async function compressImage(
   src: string,
   maxKB: number | null,
+  mimeType: 'image/jpeg' | 'image/png' = 'image/jpeg',
+  preserveDimensions = false,
 ): Promise<string> {
   const img = await loadImage(src)
-
   const render = (scale: number, quality: number): string => {
-    const w = Math.max(1, Math.round(img.naturalWidth * scale))
-    const h = Math.max(1, Math.round(img.naturalHeight * scale))
     const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
     const ctx = canvas.getContext('2d')!
     ctx.imageSmoothingQuality = 'high'
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, w, h)
-    ctx.drawImage(img, 0, 0, w, h)
-    return canvas.toDataURL('image/jpeg', quality)
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL(mimeType, mimeType === 'image/png' ? undefined : quality)
   }
 
-  if (maxKB === null) {
-    return render(1, 0.92)
+  const original = render(1, 1)
+  if (maxKB === null) return original
+
+  const maxBytes = Math.max(1, Math.floor(maxKB * 1000) - 2000)
+  const originalBytes = dataUrlBytes(original)
+  if (originalBytes <= maxBytes) return original
+
+  if (mimeType === 'image/png') {
+    throw new Error(`Unable to compress PNG below ${maxKB - 2} KB.`)
   }
 
-  const maxBytes = maxKB * 1024
-  let bestResult = render(0.3, 0.05) // Extreme fallback
-  let bestSize = dataUrlBytes(bestResult)
-
-  // Phase 1: Try quality reduction at full scale (finest granularity at full resolution)
-  for (const q of [
-    0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2,
-    0.15, 0.1, 0.08, 0.06, 0.05,
-  ]) {
-    const out = render(1, q)
-    const size = dataUrlBytes(out)
-    if (size <= maxBytes) {
-      console.log(`[v0] Compressed to ${(size / 1024).toFixed(2)}KB at scale=1.0 quality=${q}`)
-      return out
-    }
-    if (size < bestSize) {
-      bestResult = out
-      bestSize = size
-    }
-  }
-
-  // Phase 2: Scale down aggressively, testing each scale with multiple qualities
-  let scale = 0.9
-  while (scale > 0.1) {
-    for (const q of [0.75, 0.6, 0.45, 0.3, 0.15, 0.08]) {
-      const out = render(scale, q)
-      const size = dataUrlBytes(out)
-      if (size <= maxBytes) {
-        console.log(
-          `[v0] Compressed to ${(size / 1024).toFixed(2)}KB at scale=${scale.toFixed(2)} quality=${q}`,
-        )
-        return out
+  let scale = 1
+  let smallest = original
+  let smallestBytes = originalBytes
+  while (true) {
+    // Preserve dimensions for Image Tools presets; PDF images may scale after
+    // the JPEG quality floor is reached because PDF layout controls mm size.
+    const qualitySteps = [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.45]
+    for (const quality of qualitySteps) {
+      const candidate = render(scale, quality)
+      const bytes = dataUrlBytes(candidate)
+      if (bytes < smallestBytes) {
+        smallest = candidate
+        smallestBytes = bytes
       }
-      if (size < bestSize) {
-        bestResult = out
-        bestSize = size
-      }
+      if (bytes <= maxBytes) return candidate
     }
-    scale *= 0.8
+    if (preserveDimensions) break
+    scale *= 0.9
+    if (scale < 0.01) break
   }
 
-  // Phase 3: Final extreme scaling
-  for (let scale = 0.1; scale >= 0.05; scale -= 0.01) {
-    const out = render(scale, 0.1)
-    const size = dataUrlBytes(out)
-    if (size <= maxBytes) {
-      console.log(`[v0] Compressed to ${(size / 1024).toFixed(2)}KB at scale=${scale.toFixed(2)} quality=0.1`)
-      return out
-    }
-    if (size < bestSize) {
-      bestResult = out
-      bestSize = size
-    }
-  }
+  throw new Error(
+    `Unable to compress image below ${maxKB - 2} KB${preserveDimensions ? ' without changing its pixel dimensions' : ''} (smallest result was ${(smallestBytes / 1000).toFixed(1)} KB).`,
+  )
 
-  // Final fallback: return the smallest we could produce
-  console.log(`[v0] Fallback: ${(bestSize / 1024).toFixed(2)}KB (target was ${maxKB}KB)`)
-  return bestResult
 }

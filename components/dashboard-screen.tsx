@@ -11,6 +11,8 @@ import {
   Vote,
   IdCard,
   Wheat,
+  Files,
+  Image,
   ChevronRight,
   Loader2,
   Trash2,
@@ -27,6 +29,8 @@ const DOC_ICONS: Record<DocId, typeof CreditCard> = {
   voter: Vote,
   pan: IdCard,
   ration: Wheat,
+  others: Files,
+  'image-tools': Image,
 }
 
 export function DashboardScreen({
@@ -40,8 +44,7 @@ export function DashboardScreen({
   const [exporting, setExporting] = useState(false)
 
   const completedCount = useMemo(
-    () =>
-      DOC_CONFIGS.filter((c) => isDocComplete(c, docs[c.id])).length,
+    () => DOC_CONFIGS.filter((c) => isDocComplete(c, docs[c.id])).length,
     [docs],
   )
 
@@ -53,8 +56,13 @@ export function DashboardScreen({
     setExporting(true)
     try {
       const result = await exportAllDocs(customerName, docs, exportSize)
+      for (const notice of result.notices) toast.message(notice)
+      for (const failure of result.failures) toast.error(failure, { duration: 6000 })
+      if (result.count === 0) {
+        return
+      }
       if (result.method === 'folder') {
-        toast.success(`Saved ${result.count} PDF(s) to the chosen folder.`, {
+        toast.success(`Saved ${result.count} file(s) to the chosen folder.`, {
           duration: 2000,
         })
       } else {
@@ -66,7 +74,8 @@ export function DashboardScreen({
       if ((err as DOMException)?.name === 'AbortError') {
         toast.message('Export cancelled.')
       } else {
-        toast.error('Export failed. Please try again.')
+        const message = err instanceof Error ? err.message : 'Export failed.'
+        toast.error(message)
       }
     } finally {
       setExporting(false)
@@ -121,7 +130,11 @@ export function DashboardScreen({
             const data = docs[config.id]
             const started =
               !complete && !!data && config.sides.some((s) => !!data[s])
-            const anyCaptured = !!data && config.sides.some((s) => !!data[s])
+            const otherImageCount = data?.images?.length ?? 0
+            const anyCaptured =
+              config.id === 'others'
+                ? otherImageCount > 0
+                : !!data && config.sides.some((s) => !!data[s])
             return (
               <div
                 key={config.id}
@@ -155,28 +168,46 @@ export function DashboardScreen({
                     <p className="font-semibold leading-tight">{config.name}</p>
                     {/* Per-side upload status */}
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      {config.sides.map((side) => {
-                        const done = !!data?.[side]
-                        const label = side === 'front' ? 'Front' : 'Back'
-                        return (
-                          <span
-                            key={side}
-                            className={cn(
-                              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                              done
+                      {config.id === 'others' ? (
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                              otherImageCount > 0
                                 ? 'bg-accent/10 text-accent'
                                 : 'bg-muted text-muted-foreground',
-                            )}
-                          >
-                            {done ? (
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                            ) : (
-                              <Circle className="h-3.5 w-3.5" />
-                            )}
-                            {label}
-                          </span>
-                        )
-                      })}
+                          )}
+                        >
+                          {otherImageCount > 0 ? (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          ) : (
+                            <Circle className="h-3.5 w-3.5" />
+                          )}
+                          {otherImageCount} {otherImageCount === 1 ? 'document' : 'documents'} added
+                        </span>
+                      ) : (
+                        config.sides.map((side) => {
+                          const done = !!data?.[side]
+                          const label = side === 'front' ? 'Front' : 'Back'
+                          return (
+                            <span
+                              key={side}
+                              className={cn(
+                                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                                done
+                                  ? 'bg-accent/10 text-accent'
+                                  : 'bg-muted text-muted-foreground',
+                              )}
+                            >
+                              {done ? (
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                              ) : (
+                                <Circle className="h-3.5 w-3.5" />
+                              )}
+                              {label}
+                            </span>
+                          )
+                        })
+                      )}
                     </div>
                   </div>
                   <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />

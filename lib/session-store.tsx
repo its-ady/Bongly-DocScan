@@ -29,6 +29,7 @@ interface SessionContextValue {
   hasSession: boolean
   docs: DocStore
   setDocSide: (id: DocId, side: 'front' | 'back', dataUrl: string) => void
+  setOtherImages: (images: DocData['images']) => void
   clearDoc: (id: DocId) => void
   clearDocSide: (id: DocId, side: 'front' | 'back') => void
   exportSize: ExportSize
@@ -40,6 +41,8 @@ const emptyDocs: DocStore = {
   voter: {},
   pan: {},
   ration: {},
+  others: {},
+  'image-tools': {},
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null)
@@ -111,6 +114,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  const setOtherImages = useCallback((images: DocData['images']) => {
+    setDocs((prev) => ({
+      ...prev,
+      others: { ...prev.others, images: images ?? [] },
+    }))
+  }, [])
+
   const clearDoc = useCallback((id: DocId) => {
     setDocs((prev) => ({ ...prev, [id]: {} }))
   }, [])
@@ -132,6 +142,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       hasSession,
       docs,
       setDocSide,
+      setOtherImages,
       clearDoc,
       clearDocSide,
       exportSize,
@@ -145,6 +156,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       hasSession,
       docs,
       setDocSide,
+      setOtherImages,
       clearDoc,
       clearDocSide,
       exportSize,
