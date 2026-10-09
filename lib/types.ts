@@ -1,4 +1,4 @@
-export type DocId = 'aadhaar' | 'voter' | 'pan' | 'ration' | 'others'
+export type DocId = 'aadhaar' | 'voter' | 'pan' | 'ration' | 'others' | 'image-tools'
 
 export type ExportSize =
   | 'original'
@@ -64,6 +64,12 @@ export const DOC_CONFIGS: DocConfig[] = [
     sides: ['front'],
     description: 'Arrange multiple photos on A4',
   },
+  {
+    id: 'image-tools',
+    name: 'Image Tools',
+    sides: ['front'],
+    description: 'Resize, crop, and save as JPG or PNG',
+  },
 ]
 
 export const EXPORT_SIZE_OPTIONS: { value: ExportSize; label: string; maxKB: number | null }[] = [
@@ -74,6 +80,16 @@ export const EXPORT_SIZE_OPTIONS: { value: ExportSize; label: string; maxKB: num
   { value: 'under50', label: 'Under 50 KB', maxKB: 50 },
 ]
 
+export function maxKBForExportSize(size: ExportSize): number | null {
+  return EXPORT_SIZE_OPTIONS.find((option) => option.value === size)?.maxKB ?? null
+}
+
+/** The export ceiling leaves a 2 KB safety margin below the selected setting. */
+export function exportByteLimit(size: ExportSize): number | null {
+  const maxKB = maxKBForExportSize(size)
+  return maxKB === null ? null : Math.max(1, maxKB * 1000 - 2000)
+}
+
 export function getDocConfig(id: DocId): DocConfig {
   return DOC_CONFIGS.find((d) => d.id === id)!
 }
@@ -81,5 +97,8 @@ export function getDocConfig(id: DocId): DocConfig {
 export function isDocComplete(config: DocConfig, data: DocData | undefined): boolean {
   if (!data) return false
   if (config.id === 'others') return Boolean(data.images?.length)
+  // Image Tools is a single exported image. Accept either side for backwards
+  // compatibility with sessions saved before it became a dedicated tool.
+  if (config.id === 'image-tools') return Boolean(data.front || data.back)
   return config.sides.every((side) => Boolean(data[side]))
 }

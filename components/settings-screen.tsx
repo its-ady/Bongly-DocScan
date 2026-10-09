@@ -28,7 +28,7 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
       <div className="mx-auto w-full max-w-md flex-1 px-4 py-5">
         <h2 className="mb-1 text-sm font-medium">Default export size</h2>
         <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
-          Applied to every PDF export. Smaller sizes compress images more
+          Applied to every PDF and image export. Smaller sizes compress images more
           aggressively to fit the limit.
         </p>
 

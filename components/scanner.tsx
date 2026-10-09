@@ -26,12 +26,36 @@ import {
   detectDocumentQuad,
   rotateImage90,
   enhanceImage,
+  cropImage,
+  getImageDimensions,
+  compressImage,
+  limitImageSize,
   type Quad,
 } from '@/lib/image-utils'
-import { buildOthersPdf, downloadSingleDoc, othersPdfFileName } from '@/lib/pdf-utils'
-import { DOC_CONFIGS, getDocConfig, type DocId } from '@/lib/types'
+import { buildOthersPdf, downloadSingleDoc, pdfFileName, safeFileName, triggerDownload } from '@/lib/pdf-utils'
+import { DOC_CONFIGS, getDocConfig, maxKBForExportSize, exportByteLimit, type DocId } from '@/lib/types'
 
 type Phase = 'camera' | 'crop' | 'preview' | 'arrange' | 'done'
+type CropPreset = { label: string; ratio?: number; width?: number; height?: number }
+
+const CROP_DPI = 300
+const mmToPixels = (mm: number) => Math.round((mm / 25.4) * CROP_DPI)
+
+const CROP_PRESETS: CropPreset[] = [
+  { label: 'Free Crop' },
+  { label: '35 mm × 45 mm', ratio: 35 / 45, width: mmToPixels(35), height: mmToPixels(45) },
+  { label: '25 mm × 35 mm', ratio: 25 / 35, width: mmToPixels(25), height: mmToPixels(35) },
+  { label: '35 mm × 35 mm', ratio: 1, width: mmToPixels(35), height: mmToPixels(35) },
+  { label: '20 mm × 25 mm', ratio: 20 / 25, width: mmToPixels(20), height: mmToPixels(25) },
+  { label: '50 mm × 70 mm', ratio: 50 / 70, width: mmToPixels(50), height: mmToPixels(70) },
+  { label: '2 in × 2 in', ratio: 1, width: 2 * CROP_DPI, height: 2 * CROP_DPI },
+]
+
+const OUTPUT_FORMATS = [
+  { label: 'JPG', mimeType: 'image/jpeg' as const },
+  { label: 'JPEG', mimeType: 'image/jpeg' as const },
+  { label: 'PNG', mimeType: 'image/png' as const },
+]
 
 interface Props {
   docId: DocId
@@ -55,6 +79,8 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const [flashOn, setFlashOn] = useState(false)
   const [arrangedImages, setArrangedImages] = useState<PlacedImage[]>([])
   const [arrangeMode, setArrangeMode] = useState(false)
+  const [cropPreset, setCropPreset] = useState<CropPreset>(CROP_PRESETS[0])
+  const [outputFormat, setOutputFormat] = useState(OUTPUT_FORMATS[0])
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -65,11 +91,25 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   // Image currently shown in the crop editor (enhanced version when toggled on).
   const displaySrc = enhanced && enhancedSrc ? enhancedSrc : capturedSrc
 
+  useEffect(() => {
+    if (!cropPreset.ratio || !cropQuad || docId !== 'image-tools') return
+    const left = Math.min(cropQuad.tl.x, cropQuad.bl.x)
+    const right = Math.max(cropQuad.tr.x, cropQuad.br.x)
+    const top = Math.min(cropQuad.tl.y, cropQuad.tr.y)
+    const bottom = Math.max(cropQuad.bl.y, cropQuad.br.y)
+    const width = right - left
+    const height = width / cropPreset.ratio
+    const centerY = (top + bottom) / 2
+    const next: Quad = { tl: { x: left, y: centerY - height / 2 }, tr: { x: right, y: centerY - height / 2 }, br: { x: right, y: centerY + height / 2 }, bl: { x: left, y: centerY + height / 2 } }
+    setCropQuad(next)
+    liveQuadRef.current = next
+  }, [cropPreset, docId])
+
   // Reset everything when the document changes (Scan Next Document).
   useEffect(() => {
     setSideIndex(0)
-    setPhase('camera')
-    setCapturedSrc(null)
+  setPhase(docId === 'others' && (docs.others.images ?? []).length > 0 ? 'arrange' : 'camera')
+  setCapturedSrc(null)
     setEnhancedSrc(null)
     setEnhanced(false)
     setCropQuad(null)
@@ -143,7 +183,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
       canvas.height = video.videoHeight
       const ctx = canvas.getContext('2d')!
       ctx.drawImage(video, 0, 0)
-      const src = canvas.toDataURL('image/jpeg', 0.95)
+      const src = canvas.toDataURL('image/jpeg', 1.0)
       setCapturedSrc(src)
       const detected = await detectDocumentQuad(src)
       setCropQuad(detected)
@@ -205,29 +245,28 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   }
 
   const handleGallerySelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+    const input = event.target
+    const file = input.files?.[0]
     if (!file) return
-    
     setProcessing(true)
     try {
-      const reader = new FileReader()
-      reader.onload = async (e) => {
-        const src = e.target?.result as string
-        setCapturedSrc(src)
-        const detected = await detectDocumentQuad(src)
-        setCropQuad(detected)
-        liveQuadRef.current = detected
-        setPhase('crop')
-        setProcessing(false)
-      }
-      reader.readAsDataURL(file)
+      const raw = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = () => reject(reader.error)
+        reader.readAsDataURL(file)
+      })
+      const src = await limitImageSize(raw, 3000)
+      setCapturedSrc(src)
+      const detected = await detectDocumentQuad(src)
+      setCropQuad(detected)
+      liveQuadRef.current = detected
+      setPhase('crop')
     } catch {
       toast.error('Could not load the image.')
+    } finally {
       setProcessing(false)
-    }
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      input.value = ''
     }
   }
 
@@ -237,7 +276,37 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
     setProcessing(true)
     try {
       const straightened = await warpPerspective(displaySrc, liveQuadRef.current)
-      setPreviewSrc(straightened)
+      let output = straightened
+      if (cropPreset.width && cropPreset.height) {
+        const { width: naturalWidth, height: naturalHeight } = await getImageDimensions(straightened)
+        const targetRatio = cropPreset.width / cropPreset.height
+        const sourceRatio = naturalWidth / naturalHeight
+        let sourceWidth = naturalWidth
+        let sourceHeight = naturalHeight
+        let sourceX = 0
+        let sourceY = 0
+
+        // Keep the selected output size without stretching the photo. If
+        // perspective correction leaves a tiny ratio difference, trim only
+        // the excess edges before scaling to the requested 300 DPI pixels.
+        if (sourceRatio > targetRatio) {
+          sourceWidth = naturalHeight * targetRatio
+          sourceX = (naturalWidth - sourceWidth) / 2
+        } else if (sourceRatio < targetRatio) {
+          sourceHeight = naturalWidth / targetRatio
+          sourceY = (naturalHeight - sourceHeight) / 2
+        }
+
+        output = await cropImage(
+          straightened,
+          { x: sourceX, y: sourceY, width: sourceWidth, height: sourceHeight },
+          { width: cropPreset.width, height: cropPreset.height, mimeType: outputFormat.mimeType },
+        )
+      } else if (outputFormat.mimeType !== 'image/jpeg') {
+        const { width, height } = await getImageDimensions(straightened)
+        output = await cropImage(straightened, { x: 0, y: 0, width, height }, { mimeType: outputFormat.mimeType })
+      }
+      setPreviewSrc(output)
       setPhase('preview')
     } catch {
       toast.error('Could not crop the image.')
@@ -256,17 +325,15 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const acceptPreview = () => {
     if (!previewSrc) return
     if (docId === 'others') {
-      const image = new Image()
-      image.onload = () => {
+      getImageDimensions(previewSrc).then(({ width: naturalWidth, height: naturalHeight }) => {
         const width = 260
         setArrangedImages((items) => {
-          const next = [...items, { id: crypto.randomUUID(), src: previewSrc, x: 32, y: 32, w: width, h: width * image.height / image.width }]
+          const next = [...items, { id: crypto.randomUUID(), src: previewSrc, x: 32, y: 32, w: width, h: width * naturalHeight / naturalWidth }]
           setOtherImages(next)
           return next
         })
         setPhase('arrange')
-      }
-      image.src = previewSrc
+      }).catch(() => toast.error('Could not prepare the image.'))
       return
     }
     setDocSide(docId, currentSide, previewSrc)
@@ -287,20 +354,35 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
   const handleSavePdf = async () => {
     setProcessing(true)
     try {
-      if (docId === 'others') {
+      if (docId === 'image-tools' && previewSrc) {
+        const maxKB = maxKBForExportSize(exportSize)
+        let usedJpegFallback = false
+        let exportSrc: string
+        try {
+          exportSrc = await compressImage(previewSrc, maxKB, outputFormat.mimeType, true)
+        } catch (error) {
+          if (outputFormat.mimeType !== 'image/png') throw error
+          exportSrc = await compressImage(previewSrc, maxKB, 'image/jpeg', true)
+          usedJpegFallback = true
+        }
+        const response = await fetch(exportSrc)
+        const blob = await response.blob()
+        const limit = exportByteLimit(exportSize)
+        if (limit !== null && blob.size > limit) {
+          throw new Error(`Image export must be below ${Math.max(1, maxKB! - 2)} KB.`)
+        }
+        triggerDownload(blob, `${safeFileName(customerName)}_Image.${exportSrc.startsWith('data:image/png') ? 'png' : 'jpg'}`)
+        if (usedJpegFallback) toast.message('PNG এই সাইজে হয় না, JPG সেভ হয়েছে')
+      } else if (docId === 'others') {
         const blob = await buildOthersPdf(arrangedImages, exportSize)
-        const url = URL.createObjectURL(blob)
-        const anchor = document.createElement('a')
-        anchor.href = url
-        anchor.download = othersPdfFileName(customerName)
-        anchor.click()
-        URL.revokeObjectURL(url)
+        triggerDownload(blob, pdfFileName(customerName, 'others'))
       } else {
         await downloadSingleDoc(customerName, docId, docs[docId], exportSize)
       }
-      toast.success(`${config.name} PDF saved.`)
-    } catch {
-      toast.error('Could not generate the PDF.')
+      toast.success(docId === 'image-tools' ? `${config.name} image saved.` : `${config.name} PDF saved.`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not generate the export.'
+      toast.error(message)
     } finally {
       setProcessing(false)
     }
@@ -332,10 +414,32 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         >
           <X className="h-6 w-6" />
         </Button>
-        <div className="text-center">
+        <div className="flex min-w-0 flex-1 flex-col items-center text-center">
           <p className="text-sm font-semibold">{config.name}</p>
           {phase !== 'done' && (
             <p className="text-xs text-white/70">{stepText}</p>
+          )}
+          {phase === 'crop' && docId === 'image-tools' && (
+            <div className="mt-3 flex w-full max-w-md gap-2">
+              <label className="sr-only" htmlFor="crop-preset">Crop size</label>
+              <select
+                id="crop-preset"
+                value={cropPreset.label}
+                onChange={(e) => setCropPreset(CROP_PRESETS.find((preset) => preset.label === e.target.value) ?? CROP_PRESETS[0])}
+                className="min-w-0 flex-1 rounded-lg border border-white/20 bg-black/70 px-3 py-2 text-sm text-white backdrop-blur"
+              >
+                {CROP_PRESETS.map((preset) => <option key={preset.label} value={preset.label}>{preset.label}</option>)}
+              </select>
+              <label className="sr-only" htmlFor="output-format">Output format</label>
+              <select
+                id="output-format"
+                value={outputFormat.label}
+                onChange={(e) => setOutputFormat(OUTPUT_FORMATS.find((format) => format.label === e.target.value) ?? OUTPUT_FORMATS[0])}
+                className="w-24 rounded-lg border border-white/20 bg-black/70 px-3 py-2 text-sm text-white backdrop-blur"
+              >
+                {OUTPUT_FORMATS.map((format) => <option key={format.label} value={format.label}>{format.label}</option>)}
+              </select>
+            </div>
           )}
         </div>
         <div className="w-10" />
@@ -390,6 +494,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
             <CropEditor
               src={displaySrc}
               initialQuad={cropQuad}
+              lockedAspectRatio={docId === 'image-tools' ? cropPreset.ratio : undefined}
               onChange={(q) => {
                 liveQuadRef.current = q
               }}
@@ -424,10 +529,8 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
         {phase === 'arrange' && (
           <ArrangeEditor
             images={arrangedImages}
-            onChange={(next) => {
-              setArrangedImages(next)
-              setOtherImages(next)
-            }}
+            onChange={(next) => setArrangedImages(next)}
+            onCommit={(next) => setOtherImages(next)}
             onAddPhoto={() => { setCapturedSrc(null); setPreviewSrc(null); setPhase('camera') }}
             onConvert={() => setPhase('done')}
           />
@@ -451,10 +554,10 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">
-                {config.name} captured
+                {config.name} ready
               </h2>
               <p className="mt-1 text-sm text-white/70">
-                {customerName}_{config.name.split(' ')[0]}.pdf is ready.
+                {docId === 'image-tools' ? 'Your resized image is ready to save.' : `${customerName}_${config.name.split(' ')[0]}.pdf is ready.`}
               </p>
             </div>
           </div>
@@ -525,7 +628,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
                 ) : (
                   <Check className="h-5 w-5" />
                 )}
-                Straighten
+                {docId === 'image-tools' ? 'Crop Image' : 'Straighten'}
               </Button>
             </div>
           </div>
@@ -571,7 +674,7 @@ export function Scanner({ docId, onExit, onScanDoc }: Props) {
               ) : (
                 <Download className="h-5 w-5" />
               )}
-              Save this PDF now
+              {docId === 'image-tools' ? `Save as ${outputFormat.label}` : 'Save this PDF now'}
             </Button>
             {nextDoc ? (
               <Button

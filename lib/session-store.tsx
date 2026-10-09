@@ -42,6 +42,7 @@ const emptyDocs: DocStore = {
   pan: {},
   ration: {},
   others: {},
+  'image-tools': {},
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null)

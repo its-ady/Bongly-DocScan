@@ -12,11 +12,12 @@ import {
   type DocId,
   type DocStore,
   type ExportSize,
+  maxKBForExportSize,
+  exportByteLimit,
 } from '@/lib/types'
-import { EXPORT_SIZE_OPTIONS } from '@/lib/types'
 
 function maxKBFor(size: ExportSize): number | null {
-  return EXPORT_SIZE_OPTIONS.find((o) => o.value === size)?.maxKB ?? null
+  return maxKBForExportSize(size)
 }
 
 function imageDims(src: string): Promise<{ w: number; h: number }> {
@@ -114,34 +115,43 @@ export async function buildDocPdf(
 ): Promise<Blob> {
   const config = getDocConfig(id)
   const maxKB = maxKBFor(exportSize)
-  const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
-
-  // Estimate PDF overhead (header, metadata, etc.) - roughly 5-10 KB for A4 page
-  const pdfOverheadKB = 8
   const numSides = config.sides.filter((side) => data[side]).length
-  
-  // Divide remaining budget equally among images
-  // E.g., if maxKB is 200 and we have 2 images, each gets ~96 KB max
-  let perImageKB: number | null = null
-  if (maxKB && numSides > 0) {
-    const availableKB = Math.max(5, maxKB - pdfOverheadKB)
-    perImageKB = Math.floor(availableKB / numSides)
+  const build = async (perImageKB: number | null): Promise<Blob> => {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
+    const images: PdfImage[] = []
+
+    for (const side of config.sides) {
+      const raw = data[side]
+      if (!raw) continue
+      const processed = await compressImage(raw, perImageKB)
+      const { w, h } = await imageDims(processed)
+      images.push({ src: processed, w, h })
+    }
+
+    if (images.length > 0) layoutSinglePage(doc, images)
+    return doc.output('blob')
   }
 
-  const images: PdfImage[] = []
-  for (const side of config.sides) {
-    const raw = data[side]
-    if (!raw) continue
-    const processed = await compressImage(raw, perImageKB)
-    const { w, h } = await imageDims(processed)
-    images.push({ src: processed, w, h })
+  if (maxKB === null || numSides === 0) return build(null)
+
+  const maxBytes = exportByteLimit(exportSize)!
+  // Reserve space for the PDF container, then verify the complete PDF because
+  // jsPDF overhead varies with image dimensions and document metadata.
+  let perImageKB = Math.max(2, Math.floor(Math.max(2, maxKB - 16) / numSides))
+  let blob = await build(perImageKB)
+
+  for (let attempt = 0; attempt < 8 && blob.size > maxBytes; attempt++) {
+    const ratio = Math.sqrt(maxBytes / blob.size) * 0.96
+    const nextBudget = Math.max(2, Math.floor(perImageKB * ratio))
+    if (nextBudget >= perImageKB) break
+    perImageKB = nextBudget
+    blob = await build(perImageKB)
   }
 
-  if (images.length > 0) {
-    layoutSinglePage(doc, images)
+  if (blob.size > maxBytes) {
+    throw new Error(`Unable to create ${getDocConfig(id).name} PDF below ${Math.max(1, maxKB - 2)} KB.`)
   }
-
-  return doc.output('blob')
+  return blob
 }
 
 export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSize): Promise<Blob> {
@@ -175,7 +185,7 @@ export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSiz
     return new Blob([bytes], { type: 'application/pdf' })
   }
 
-  const maxBytes = maxKB * 1024
+  const maxBytes = exportByteLimit(exportSize)!
   // Leave room for the PDF catalog, page, fonts/metadata, and image objects.
   let perImageKB = Math.max(5, Math.floor((maxKB - 12) / images.length))
   let bytes = await build(perImageKB)
@@ -190,21 +200,30 @@ export async function buildOthersPdf(images: OtherImage[], exportSize: ExportSiz
     bytes = await build(perImageKB)
   }
 
+  if (bytes.byteLength > maxBytes) {
+    throw new Error(`Unable to create Others Docs PDF below ${Math.max(1, maxKB - 2)} KB.`)
+  }
   return new Blob([bytes], { type: 'application/pdf' })
 }
 
-export function othersPdfFileName(customerName: string): string {
-  const safeName = (customerName || 'Customer').replace(/[^\\p{L}\\p{N}_ -]/gu, '').trim() || 'Customer'
-  return `${safeName}_Others Docs.pdf`
+export function safeFileName(name: string): string {
+  return (name || 'Customer').replace(/[^\p{L}\p{M}\p{N}_ -]/gu, '').trim() || 'Customer'
 }
 
 export function pdfFileName(customerName: string, id: DocId): string {
-  const safeName = (customerName || 'Customer').replace(/[^\p{L}\p{N}_ -]/gu, '').trim() || 'Customer'
+  const safeName = safeFileName(customerName)
+  if (id === 'others') return `${safeName}_Others Docs.pdf`
   const label = getDocConfig(id).name.split(' ')[0]
   return `${safeName}_${label}.pdf`
 }
 
-function triggerDownload(blob: Blob, filename: string) {
+function imageFileName(customerName: string, src: string): string {
+  const safeName = safeFileName(customerName)
+  const extension = src.startsWith('data:image/png') ? 'png' : 'jpg'
+  return `${safeName}_Image.${extension}`
+}
+
+export function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -228,6 +247,8 @@ export async function downloadSingleDoc(
 interface ExportResult {
   count: number
   method: 'folder' | 'downloads'
+  failures: string[]
+  notices: string[]
 }
 
 /**
@@ -241,17 +262,53 @@ export async function exportAllDocs(
   exportSize: ExportSize,
 ): Promise<ExportResult> {
   const completed = DOC_CONFIGS.filter((c) => isDocComplete(c, docs[c.id]))
+  const maxKB = maxKBFor(exportSize)
 
-  // Build all blobs first.
+  // Build all files first so PDFs and Image Tools output are exported together.
   const built: { name: string; blob: Blob }[] = []
+  const failures: string[] = []
+  const notices: string[] = []
   for (const config of completed) {
+    try {
+    if (config.id === 'image-tools') {
+      // Older sessions may have stored the single image under `back`; accept
+      // both keys so the dashboard and export stay in sync after navigation.
+      const src = docs['image-tools'].front ?? docs['image-tools'].back
+      if (!src) continue
+      const mimeType = src.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
+      let output: string
+          try {
+        output = await compressImage(src, maxKB, mimeType, true)
+      } catch (error) {
+        if (mimeType !== 'image/png') throw error
+        output = await compressImage(src, maxKB, 'image/jpeg', true)
+        notices.push('PNG এই সাইজে হয় না, JPG সেভ হয়েছে')
+      }
+      const blob = await (await fetch(output)).blob()
+      const limit = exportByteLimit(exportSize)
+      if (limit !== null && blob.size > limit) {
+        throw new Error(`Image Tools export must be below ${Math.max(1, maxKB! - 2)} KB.`)
+      }
+      built.push({ name: imageFileName(customerName, output), blob })
+      continue
+    }
+
     const blob = config.id === 'others'
       ? await buildOthersPdf(docs.others.images ?? [], exportSize)
       : await buildDocPdf(config.id, docs[config.id], exportSize)
     built.push({
-      name: config.id === 'others' ? othersPdfFileName(customerName) : pdfFileName(customerName, config.id),
+      name: pdfFileName(customerName, config.id),
       blob,
     })
+    } catch (error) {
+      const name = config.name
+      const message = error instanceof Error ? error.message : 'Unknown export error.'
+      failures.push(`${name}: ${message}`)
+    }
+  }
+
+  if (built.length === 0) {
+    return { count: 0, method: 'downloads', failures, notices }
   }
 
   // Attempt folder export via File System Access API.
@@ -262,9 +319,7 @@ export async function exportAllDocs(
   if (typeof picker === 'function') {
     try {
       const dirHandle = await picker.call(window)
-      const safeFolder =
-        (customerName || 'Customer').replace(/[^\p{L}\p{N}_ -]/gu, '').trim() ||
-        'Customer'
+      const safeFolder = safeFileName(customerName)
       let target: FileSystemDirectoryHandle = dirHandle
       try {
         target = await dirHandle.getDirectoryHandle(safeFolder, { create: true })
@@ -277,7 +332,7 @@ export async function exportAllDocs(
         await writable.write(item.blob)
         await writable.close()
       }
-      return { count: built.length, method: 'folder' }
+      return { count: built.length, method: 'folder', failures, notices }
     } catch (err) {
       // User cancelled or write failed -> fall through to downloads.
       if ((err as DOMException)?.name === 'AbortError') {
@@ -292,5 +347,5 @@ export async function exportAllDocs(
     await new Promise((r) => setTimeout(r, i === 0 ? 0 : 400))
     triggerDownload(item.blob, item.name)
   }
-  return { count: built.length, method: 'downloads' }
+  return { count: built.length, method: 'downloads', failures, notices }
 }
