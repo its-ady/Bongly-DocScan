@@ -24,7 +24,7 @@ export function HomeScreen() {
         <div className="flex w-full max-w-sm flex-col items-center gap-8">
           <div className="flex flex-col items-center gap-4 text-center">
             <Image
-              src="/logo.png"
+              src="/logo.webp"
               alt="Bongly DocScan scanner logo"
               width={144}
               height={144}

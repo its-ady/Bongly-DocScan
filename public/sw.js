@@ -1,5 +1,5 @@
 const CACHE = 'bongly-docscan-v4'
-const APP_SHELL = ['/', '/manifest.webmanifest', '/logo.png']
+const APP_SHELL = ['/', '/manifest.webmanifest', '/logo.webp']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -61,7 +61,7 @@ self.addEventListener('fetch', (event) => {
         cached ||
         fetch(request)
           .then((response) => cacheResponse(request, response))
-          .catch(() => caches.match('/logo.png')),
+          .catch(() => caches.match('/logo.webp')),
       ),
     )
     return
